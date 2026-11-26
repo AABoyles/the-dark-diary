@@ -12,6 +12,7 @@ import { turnPage, isTurning } from './pageturn.js';
 import { mountSoundToggle, scratch, strokeSound, rustle, coverCreak } from './sound.js';
 import { startCandle, setThinking } from './candle.js';
 import { matchEgg } from './eggs.js';
+import { createBandit, engagementReward, FAMILIES } from './bandit.js';
 import { playAnagram } from './effects.js';
 import { loadNlp } from './nlp.js';
 import { initEmbedder } from './embed.js';
@@ -342,6 +343,8 @@ function writeStore(key, value) {
 }
 
 // ---------- Conversation ----------
+// issue #37: which kinds of reply keep this writer writing (stored locally only)
+const bandit = createBandit();
 const MAX_TITLE_REVISIONS = 2;
 const REVISE_AT_USER_MESSAGES = [4, 8];
 const RETURN_AFTER_MS = 24 * 3600 * 1000;
@@ -411,7 +414,21 @@ async function submit() {
   const prevTs = session.messages.at(-2)?.ts ?? null; // the message before this one, if any
   const time = timeContext(new Date(), { lastMessageTs: prevTs });
   let level = 'acquaintance';
-  try { level = familiarity(await db.listSessions()).level; } catch { /* default */ }
+  let recentAcross = [];
+  try {
+    const sessions = await db.listSessions();
+    level = familiarity(sessions).level;
+    // lines the diary used in other entries, newest first: the engine avoids repeating them
+    recentAcross = sessions.filter((s) => s.id !== session.id)
+      .flatMap((s) => s.messages.filter((m) => m.role === 'diary').map((m) => m.text))
+      .slice(0, 400);
+  } catch { /* defaults */ }
+  // reward the source of the diary's previous line by how much the writer wrote back
+  const prevDiary = session.messages.at(-2);
+  if (prevDiary?.role === 'diary' && FAMILIES.includes(prevDiary.family)) {
+    try { bandit.update(prevDiary.family, engagementReward(text)); } catch { /* optional */ }
+  }
+  const trace = {};
   // issue #19: a few hidden phrases get special answers (never anything the crisis check would flag)
   let egg = null;
   try { egg = matchEgg(text, { history: session.messages.filter((m) => m.role === 'diary').map((m) => m.text) }); } catch { /* no egg */ }
@@ -422,12 +439,12 @@ async function submit() {
     }
     answer = egg.reply;
   } else {
-    try { answer = await reply(session.messages, { recollections, time, familiarity: level }, { onText: (piece) => ensureWriter().append(piece) }); }
+    try { answer = await reply(session.messages, { recollections, time, familiarity: level, recentAcross, bandit, trace }, { onText: (piece) => ensureWriter().append(piece) }); }
     catch { answer = 'The diary declines to answer. How very like you to have asked.'; }
   }
 
   ensureWriter().finish(answer).then(() => entriesEl.setAttribute('aria-busy', 'false'));
-  session.messages.push({ role: 'diary', text: answer, ts: Date.now() });
+  session.messages.push({ role: 'diary', text: answer, ts: Date.now(), family: egg ? 'egg' : (trace.family || 'special') });
   await db.saveSession(session);
   follow();
 

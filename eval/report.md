@@ -16,7 +16,7 @@ Compared with baseline from 2026-11-26 (seed 20261126, NLP on).
 | Distinct replies per 100 turns | 66.9 | ±0 | higher |
 | Question share (%) | 30.1 | ±0 | target ≤ 45 |
 | Longest run of questions | 2 | ±0 | lower |
-| Replies with grammar problems (%) | 0.5 | -1.3 ✓ | lower |
+| Replies with grammar problems (%) | 0 | -0.5 ✓ | lower |
 | Unresolved placeholders (count) | 0 | ±0 | lower |
 | Average reply length (words) | 18.2 | ±0 | info |
 | Strike-through rate (%) | 3.5 | ±0 | info |
@@ -42,16 +42,7 @@ Compared with baseline from 2026-11-26 (seed 20261126, NLP on).
 
 ## Grammar problems in reflected text
 
-| Problem | Replies |
-|---|---:|
-| "I" as an object | 2 |
-| i is | 1 |
-
-Examples:
-
-- *"I" as an object* — “i'm not bored of you though” → “Not bored of I though, you say. Denial is a very old dish, and rarely as filling as it looks.”
-- *i is* — “yes i'm talking to you” → “Talking to I is a fine thing to be, provided one knows it. Go on; I am listening with my whole attention.”
-- *"I" as an object* — “yes i'm talking to you” → “Talking to I is a fine thing to be, provided one knows it. Go on; I am listening with my whole attention.”
+None found.
 
 ## Most repeated replies (across all conversations)
 

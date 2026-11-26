@@ -37,7 +37,7 @@ const GRAMMAR = [
   ['"I" as an object', /\b(to|with|for|at|about|from|of|tell|told|give|gave|ask|asked|show|showed|need|needs|love|loves|hate|hates) I\b(?!'|\s+(am|was|would|will|have|had|can|could|do|did|should|shall|must|might|may|think|know|said|say|suspect|find|mean|hope|wonder|see)\b)/],
   ['you was (as subject)', /(^|[.!?]\s+|,\s*)you was\b/i],
   ['i does/has-agreement', /\bi (does|doesn't|has|hasn't|was not you)\b/i],
-  ['me am / me is', /\bme (am|is|are)\b/i],
+  ['me am / me is (as subject)', /(^|[.!?;]\s+|\b(and|but|so)\s+)me (am|is|are)\b/i],
   ['doubled pronoun', /\b(you you|i i|me me|my my|your your)\b/i],
   ['your you / you your', /\b(your you|you your)\b/i],
   ['myself/yourself mixup', /\b(you myself|i yourself)\b/i],
@@ -72,7 +72,9 @@ export async function evaluate({ seed = DEFAULT_SEED, compromise = null, convers
 
 async function run(conversations, { nlpOn }) {
   const transcripts = [];
+  const usedBefore = [];            // replies from earlier conversations (the app passes these as ctx.recentAcross)
   for (const conv of conversations) {
+    const recentAcross = new Set(usedBefore.slice(-400));
     const messages = [];
     const turns = [];
     for (const text of conv.turns) {
@@ -81,6 +83,7 @@ async function run(conversations, { nlpOn }) {
       let reply;
       let path;
       let rule = null;
+      let family = 'special';
       const egg = matchEgg(text, { history });
       if (egg) {
         reply = egg.reply;
@@ -90,15 +93,17 @@ async function run(conversations, { nlpOn }) {
         path = 'crisis';
       } else {
         const trace = {};
-        const line = scriptedReply(messages, { time: NEUTRAL_TIME(), familiarity: 'acquaintance', rewrite: null, trace });
+        const line = scriptedReply(messages, { time: NEUTRAL_TIME(), familiarity: 'acquaintance', rewrite: null, trace, recentAcross });
         reply = maybeStrike(line, { recentDiary: history.slice(-4) });
         path = trace.path || 'unknown';
         rule = trace.rule || null;
+        family = trace.family || 'eliza';
       }
       messages.push({ role: 'diary', text: reply });
-      turns.push({ user: text, reply, plain: stripStrikes(reply), path, rule, crisisInput: crisisByPhrase(text) });
+      turns.push({ user: text, reply, plain: stripStrikes(reply), path, rule, family, crisisInput: crisisByPhrase(text) });
     }
     transcripts.push({ id: conv.id, tags: conv.tags || [], turns });
+    usedBefore.push(...turns.map((t) => t.plain));
   }
   return { metrics: measure(transcripts), transcripts, nlp: nlpOn };
 }
@@ -108,9 +113,11 @@ function measure(transcripts) {
   const n = all.length;
   const pct = (x) => Math.round((1000 * x) / Math.max(1, n)) / 10;
 
-  // which path answered
+  // which path answered, and which source family
   const paths = {};
   for (const t of all) paths[t.path] = (paths[t.path] || 0) + 1;
+  const families = {};
+  for (const t of all) families[t.family] = (families[t.family] || 0) + 1;
   const generic = (paths.none || 0) + (paths['familiar-none'] || 0);
 
   // repetition
@@ -189,6 +196,7 @@ function measure(transcripts) {
     turns: n,
     conversations: transcripts.length,
     paths,
+    families,
     genericRate: pct(generic),
     keywordRate: pct((paths.keyword || 0) + (paths.rewrite || 0)),
     repeatWithinEntry: withinEntry,

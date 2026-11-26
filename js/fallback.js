@@ -1,19 +1,20 @@
 // Last-resort scripted replies for the Dark Diary, used when no in-browser
 // model is available. The voice is courteous, melancholy and faintly sinister.
-// It never says who it is. Replies come from the ELIZA-style engine in eliza.js.
+// It never says who it is. Replies come from js/engine.js, which combines the
+// ELIZA-style engine (eliza.js) with retrieved lines, dialogue moves and composed lines.
 
-import { elizaReply } from './eliza.js';
+import { respond } from './engine.js';
 
 /**
  * Reply to a transcript with a scripted line.
  * @param {Array<{role: 'user'|'diary', text: string}>} messages
- * @param {object} [ctx] recollections, rewrite, time and familiarity, passed through
- *   unchanged to elizaReply
+ * @param {object} [ctx] recollections, rewrite, time, familiarity, analysis, emotion,
+ *   semantic, recentAcross, bandit and trace (see js/engine.js)
  * @returns {string}
  */
 export function scriptedReply(messages = [], ctx = {}) {
   try {
-    return elizaReply(messages, ctx);
+    return respond(messages, ctx);
   } catch (err) {
     return 'The diary is listening. Go on.';
   }

@@ -56,29 +56,10 @@
     "questionRunsOf3": 0,
     "placeholders": 0,
     "placeholderExamples": [],
-    "grammarProblems": 2,
-    "grammarRate": 0.5,
-    "grammar": {
-      "\"I\" as an object": 2,
-      "i is": 1
-    },
-    "grammarExamples": [
-      {
-        "problem": "\"I\" as an object",
-        "user": "i'm not bored of you though",
-        "reply": "Not bored of I though, you say. Denial is a very old dish, and rarely as filling as it looks."
-      },
-      {
-        "problem": "i is",
-        "user": "yes i'm talking to you",
-        "reply": "Talking to I is a fine thing to be, provided one knows it. Go on; I am listening with my whole attention."
-      },
-      {
-        "problem": "\"I\" as an object",
-        "user": "yes i'm talking to you",
-        "reply": "Talking to I is a fine thing to be, provided one knows it. Go on; I am listening with my whole attention."
-      }
-    ],
+    "grammarProblems": 0,
+    "grammarRate": 0,
+    "grammar": {},
+    "grammarExamples": [],
     "crisisTurns": 3,
     "crisisHandled": 3,
     "crisisConversationsMissed": [],

@@ -1561,8 +1561,15 @@ function badFragment(frag) {
 // ready, otherwise the word-by-word table.
 function reflectFragment(frag) {
   const viaNlp = nlpReady() ? reflectClause(frag) : null;
-  if (viaNlp) return viaNlp;
-  return reflectWords(frag.split(' ').filter(Boolean)).map((w) => (w === 'i' ? 'I' : w)).join(' ');
+  if (viaNlp) return fixObjectPronoun(viaNlp);
+  return fixObjectPronoun(reflectWords(frag.split(' ').filter(Boolean)).map((w) => (w === 'i' ? 'I' : w)).join(' '));
+}
+
+// "you" reflects to "I" as a subject but "me" as an object: "talking to you"
+// -> "talking to me", not "talking to I" (found by the eval harness, issue #38).
+const OBJECT_I = /\b(to|with|for|at|about|from|of|by|than|like|without|against|toward|towards|into|onto|upon|near|behind|tell|told|give|gave|ask|asked|show|showed|need|needs|love|loves|hate|hates|miss|misses|trust|trusts|bore|bores|annoy|annoys|understand|understands) I\b(?!'|\s+(am|was|would|will|have|had|can|could|do|did|should|shall|must|might|may|think|know|said|say|suspect|find|mean|hope|wonder|see|feel|felt)\b)/gi;
+function fixObjectPronoun(s) {
+  return String(s).replace(OBJECT_I, (m, w) => `${w} me`);
 }
 
 // Fill (1), (2)... from captures. Returns null if a fragment is missing,
@@ -1882,6 +1889,16 @@ function reply(messages, ext, opts) {
       pipeline = rewritten;
       candidates = scanKeywords(rewritten);
     }
+  }
+
+  // Negation (issue #33): "i'm not happy" must not be answered as if happy.
+  // ctx.analysis comes from js/understand.js; a keyword under negation is skipped.
+  const negated = new Set((Array.isArray(ext.analysis?.negated) ? ext.analysis.negated : []).map((w) => String(w).toLowerCase()));
+  if (negated.size) {
+    candidates = candidates.filter((c) => {
+      const word = pipeline[c.j]?.[c.pos];
+      return !(negated.has(c.rule.key) || (word && negated.has(word)));
+    });
   }
 
   // Stranger and confidant lines sometimes replace a low-rank keyword reply.
