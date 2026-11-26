@@ -2,7 +2,7 @@
 import * as db from './db.js';
 import { initEngine, reply, makeTitle } from './ai.js';
 import { registerPWA } from './pwa.js';
-import { startDoodle } from './doodle.js';
+import { startDoodle, renderDoodle } from './doodle.js';
 import { loadNlp } from './nlp.js';
 import { initEmbedder } from './embed.js';
 import { remember, recollect, backfill } from './memory.js';
@@ -18,6 +18,7 @@ const flow = $('#flow');
 const pagesEl = $('#pages');
 
 const CHAR_DELAY_MS = 38; // must match css/style.css (--i * 38ms)
+const DOODLE_AFTER_MS = 3000; // the pen only starts if the diary takes longer than this to answer
 const UNTITLED = 'An Entry Not Yet Mocked';
 
 let current = null; // active session
@@ -119,7 +120,7 @@ flowView.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowRight') turn(1);
 });
 
-function makeEntry(role, text, { animate = false } = {}) {
+function makeEntry(role, text, { animate = false, doodle = null } = {}) {
   const div = document.createElement('div');
   div.className = `entry ${role}`;
   const p = document.createElement('p');
@@ -127,6 +128,7 @@ function makeEntry(role, text, { animate = false } = {}) {
   div.appendChild(p);
   if (role === 'user') {
     p.textContent = text;
+    if (doodle) renderDoodle(div, doodle);
   } else if (animate) {
     writeInk(p, text);
   } else {
@@ -159,7 +161,7 @@ function renderSession() {
   $('#session-date').textContent = fmtDate(current.createdAt);
   $('#session-date').dateTime = new Date(current.createdAt).toISOString();
   entriesEl.innerHTML = '';
-  for (const m of current.messages) entriesEl.appendChild(makeEntry(m.role, m.text));
+  for (const m of current.messages) entriesEl.appendChild(makeEntry(m.role, m.text, { doodle: m.doodle }));
   spread = 0;
   follow();
 }
@@ -193,29 +195,34 @@ async function submit() {
   input.disabled = true;
   const session = current;
 
-  session.messages.push({ role: 'user', text, ts: Date.now() });
-  entriesEl.appendChild(makeEntry('user', text, { animate: true }));
+  const userMsg = { role: 'user', text, ts: Date.now() };
+  session.messages.push(userMsg);
+  const userEntry = makeEntry('user', text, { animate: true });
+  entriesEl.appendChild(userEntry);
   follow();
   await db.saveSession(session);
 
   remember(session.id, text).catch(() => {}); // learn from it for later entries
-  const pending = document.createElement('div');
-  pending.className = 'entry diary pending';
-  entriesEl.appendChild(pending);
-  const stopDoodle = startDoodle(pending);
   follow();
 
-  // Give the pen a moment to doodle, even when the answer is instant.
-  const minWait = new Promise((r) => setTimeout(r, 1500));
+  // If the diary is slow to answer, a pen starts doodling in the margin of the
+  // user's message. Quick answers never see it.
+  let pen = null;
+  const penTimer = setTimeout(() => { pen = startDoodle(userEntry); }, DOODLE_AFTER_MS);
   let answer;
   let recollections = [];
   try { recollections = await recollect(session.id, text); } catch { /* memory is optional */ }
-  try { [answer] = await Promise.all([reply(session.messages, { recollections }), minWait]); }
+  try { answer = await reply(session.messages, { recollections }); }
   catch { answer = 'The diary declines to answer. How very like you to have asked.'; }
 
-  stopDoodle();
-  const entry = makeEntry('diary', answer, { animate: true });
-  pending.replaceWith(entry);
+  clearTimeout(penTimer);
+  if (pen) {
+    // the pen finishes its current stroke; the doodle stays on the page and is saved
+    pen.stop().then((paths) => {
+      if (paths.length) { userMsg.doodle = paths; return db.saveSession(session); }
+    }).catch(() => {});
+  }
+  entriesEl.appendChild(makeEntry('diary', answer, { animate: true }));
   session.messages.push({ role: 'diary', text: answer, ts: Date.now() });
   await db.saveSession(session);
   follow();

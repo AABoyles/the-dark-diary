@@ -11,7 +11,7 @@
    06. Table of contents (left page)
    07. Session page (right page)
    08. Entries & ink
-   09. Ink effects (writing, pending doodle)
+   09. Ink effects (writing, margin doodles)
    10. Entry form (handwriting input)
    11. Empty state & utility controls
    12. Opening motion
@@ -601,6 +601,7 @@ body {
 .entry {
   position: relative;
   margin: 0 0 var(--line);  /* keeps text on the ruled grid */
+  padding-right: 24%;       /* margin strip kept free for the pen's doodles */
 }
 
 /* Each ink line: pre-wrap keeps spaces, sits exactly on the grid */
@@ -676,14 +677,17 @@ body {
   animation: none;
 }
 
-/* Pending reply: a pen doodles on the page (see js/doodle.js) */
-.entry.diary.pending .doodle {
-  display: block;
-  height: calc(var(--line) * 3.4);
-  width: auto;
-  aspect-ratio: 3 / 1;
-  max-width: 100%;
+/* The pen's doodle lives in the right margin beside the user's message
+   (see js/doodle.js). It extends a little below the message, into the margin
+   the diary's reply also reserves. */
+.entry.user .doodle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 22%;
+  height: calc(var(--line) * 2.6);
   overflow: visible;
+  pointer-events: none;
 }
 
 .doodle path {
@@ -1035,6 +1039,8 @@ body {
 #spread-nav button:disabled { opacity: 0.15; cursor: default; }
 
 @media (max-width: 759.98px) {
+  .entry { padding-right: 20%; }
+  .entry.user .doodle { width: 18%; }
   #leaf-spacer { display: none; }
   #spread-nav { padding: 0 90px; }
 }
