@@ -36,12 +36,12 @@ const RELATIONS = new Set(['sister', 'brother', 'sis', 'bro', 'bestie', 'sibling
   'fiancee', 'son', 'daughter', 'aunt', 'uncle', 'cousin', 'grandmother', 'grandfather', 'grandma', 'grandpa',
   'nan', 'neighbour', 'neighbor', 'colleague', 'roommate', 'housemate', 'flatmate', 'kid', 'kids', 'child',
   'children', 'teacher', 'doctor', 'therapist', 'ex', 'parents', 'family', 'lover', 'manager', 'landlord',
-  'coworker', 'crush']);
+  'coworker', 'crush', 'grandad', 'granny', 'gran']);
 
 // Nouns that name an event rather than a thing.
 const EVENTS = new Set(['wedding', 'birthday', 'funeral', 'party', 'exam', 'interview', 'meeting', 'holiday',
   'trip', 'breakup', 'divorce', 'accident', 'argument', 'fight', 'diagnosis', 'surgery', 'anniversary',
-  'graduation', 'christening', 'vacation', 'appointment', 'audition', 'hearing', 'flight', 'reunion']);
+  'graduation', 'christening', 'vacation', 'appointment', 'audition', 'flight', 'reunion']);
 
 // Plural relations are not threads: the follow-up wording is singular.
 const PLURAL_RELATIONS = new Set(['kids', 'children', 'parents']);
@@ -52,9 +52,11 @@ const HAVE_VERBS = new Set(['had', 'have', 'has', 'got', 'lost', 'started', 'fin
   'hate', 'hated', 'love', 'loved']);
 const ADJECTIVES = new Set(['bad', 'good', 'great', 'awful', 'terrible', 'long', 'hard', 'rough', 'lovely',
   'nice', 'horrible', 'weird', 'strange', 'real', 'big', 'small', 'little', 'lot', 'bit', 'quick', 'busy',
-  'tough', 'difficult', 'sad', 'lonely', 'proper', 'huge', 'stupid', 'mad', 'odd']);
+  'tough', 'difficult', 'sad', 'lonely', 'proper', 'huge', 'stupid', 'mad', 'odd', 'favourite', 'favorite',
+  'first', 'last', 'next', 'best', 'worst', 'own', 'only']);
 const NOT_TOPIC = new Set(['lot', 'bit', 'feeling', 'idea', 'time', 'chance', 'point', 'sense', 'kind', 'sort',
-  'way', 'thing', 'things', 'go', 'deal', 'mess', 'word', 'sort', 'effect', 'some', 'none']);
+  'way', 'thing', 'things', 'go', 'deal', 'mess', 'word', 'effect', 'some', 'none', 'mind', 'head', 'stuff',
+  'self', 'arse', 'ass', 'bum', 'sock', 'socks']);
 
 // Capitalised or lowercase words that are never a person's name.
 const NOT_NAME = new Set([...FUNCTION_WORDS, ...RELATIONS, ...EVENTS, ...ADJECTIVES, ...NOT_TOPIC, ...
@@ -65,14 +67,20 @@ const NOT_NAME = new Set([...FUNCTION_WORDS, ...RELATIONS, ...EVENTS, ...ADJECTI
   'apparently literally basically obviously seriously god lol lmao money rent job cat dog dinner food ' +
   'sorry fine sure nothing everything something anything everyone everybody someone somebody nobody ' +
   'anybody anyone none there here then now just also really very yes yeah nope ever once twice ' +
-  'week year night morning day money tea coffee phone email text call called').split(' ')]);
+  'week year night morning day money tea coffee phone email text call called ops myself yourself ourselves ' +
+  'last next first other same every again once twice').split(' ')]);
 
 // Answers that open with yes, no, a reason or a hedge.
 const ANSWER_OPEN = /^(?:yes|yeah|yep|yup|yea|no|nope|nah|because|cos|cuz|since|maybe|probably|definitely|absolutely|obviously|sort|kind|mostly|partly|sometimes|often)\b/;
 const NON_ANSWER_NO = /^(?:no|nope|nah) (?:idea|clue|comment|way|reason)\b/;
 
 // Name-like words after a verb of speech or contact, in any case.
-const NAME_AFTER_VERB = /\b(?:said|called|texted|told|asked|rang|messaged|saw|met|with|from)\s+([a-z][a-z']{2,})\b/gi;
+const NAME_AFTER_VERB = /\b(?:said|called|texted|told|asked|rang|messaged|saw|met)\s+([a-z][a-z']{2,})\b/gi;
+// After "with" or "from" only a capitalised word counts: "from ops" and
+// "with dignity" are not names.
+const NAME_AFTER_PREP = /\b(?:with|from)\s+([A-Z][a-z]{2,})\b/g;
+// A name right after a relation: "my friend Dev".
+const RELATION_THEN_NAME = /\b(?:friend|sister|brother|mate|colleague|flatmate|housemate|roommate|partner|boyfriend|girlfriend|boss|mum|mom|dad|mother|father|aunt|uncle)\s+([A-Z][a-z]{2,})\b/g;
 // Sentence-opening word before a verb about it. Any case, for the common verbs.
 const NAME_SUBJECT = /(?:^|[.!?]\s+)([a-z][a-z']{2,})\s+(?:won't|wont|didn't|didnt|hasn't|hasnt|keeps|texted|called|rang|replied|messaged|wants|said|hates|loves|doesn't|doesnt)\b/gi;
 // Capitalised sentence opener before a be/have verb. Case matters here, so
@@ -212,6 +220,21 @@ function phrase(tokens, word, fallback) {
   return det ? `${det} ${word}` : null;
 }
 
+// A relation with no determiner ("friend" in "hello there friend") is a
+// thread only when a verb follows it ("mum thinks", "boss called").
+const VERB_AFTER = new Set(['thinks', 'think', 'said', 'says', 'called', 'texted', 'wants', 'keeps', 'is',
+  'was', 'has', 'had', 'told', 'asked', 'rang', 'messaged', 'hates', 'loves', 'isnt', 'wasnt', 'doesnt',
+  'didnt', 'wont', 'are', 'were', 'have', 'will', 'would', 'never', 'always', 'still', 'says']);
+
+function relationPhrase(tokens, word) {
+  const i = tokens.indexOf(word);
+  if (i < 0) return null;
+  // "like a therapist" is a comparison, not a person in the story.
+  if (tokens[i - 1] === 'like' || (tokens[i - 2] === 'like' && DETERMINERS.has(tokens[i - 1]))) return null;
+  const after = tokens[i + 1];
+  return phrase(tokens, word, VERB_AFTER.has(after) ? 'your' : null);
+}
+
 // A name as the user typed it, capitalised.
 function capitalise(word) {
   return word.charAt(0).toUpperCase() + word.slice(1);
@@ -243,9 +266,12 @@ function mentionsIn(text) {
   };
   const pushName = (raw) => {
     const w = stripPossessive(raw);
-    if (w.length < 3 || NOT_NAME.has(w.toLowerCase())) return;
+    if (w.length < 3 || w.includes("'") || NOT_NAME.has(w.toLowerCase())) return;
     push(persons, 'person', capitalise(w));
   };
+
+  // 0. A named friend ("my friend Dev") is the thread, ahead of the relation.
+  for (const m of src.matchAll(RELATION_THEN_NAME)) pushName(m[1]);
 
   // 1. What the shared NLP helper finds. It is regex-only until compromise loads.
   let facts = [];
@@ -254,7 +280,7 @@ function mentionsIn(text) {
     const t = String(fact.topic || '').toLowerCase();
     if (!t || fact.kind === 'feeling') continue;
     if (RELATIONS.has(t)) {
-      if (!PLURAL_RELATIONS.has(t)) push(persons, 'person', phrase(tokens, t, 'your'));
+      if (!PLURAL_RELATIONS.has(t)) push(persons, 'person', relationPhrase(tokens, t));
     } else if (EVENTS.has(t)) push(events, 'event', phrase(tokens, t, 'the'));
     else if (fact.kind === 'person') push(persons, 'person', nameOf(src, t));
     else if (fact.kind === 'event') push(events, 'event', phrase(tokens, t, 'the'));
@@ -263,7 +289,7 @@ function mentionsIn(text) {
 
   // 2. Relations and events the facts pass may have missed.
   tokens.forEach((tok, i) => {
-    if (RELATIONS.has(tok) && !PLURAL_RELATIONS.has(tok)) push(persons, 'person', phrase(tokens, tok, 'your'));
+    if (RELATIONS.has(tok) && !PLURAL_RELATIONS.has(tok)) push(persons, 'person', relationPhrase(tokens, tok));
     if (EVENTS.has(tok)) push(events, 'event', phrase(tokens, tok, 'the'));
     if ((tok === 'fired' || tok === 'sacked') && tokens[i + 1] !== 'up') push(events, 'event', 'the firing');
     if (tok === 'dumped' || (tok === 'broke' && tokens[i + 1] === 'up')) push(events, 'event', 'the breakup');
@@ -271,6 +297,7 @@ function mentionsIn(text) {
 
   // 3. Names: after a verb of speech or contact, or opening a sentence.
   for (const m of src.matchAll(NAME_AFTER_VERB)) pushName(m[1]);
+  for (const m of src.matchAll(NAME_AFTER_PREP)) pushName(m[1]);
   for (const m of src.matchAll(NAME_SUBJECT)) pushName(m[1]);
   for (const m of src.matchAll(NAME_SUBJECT_CAP)) pushName(m[1]);
 
