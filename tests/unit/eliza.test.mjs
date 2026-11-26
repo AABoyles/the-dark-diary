@@ -312,3 +312,222 @@ test('malformed context values never throw and never produce an empty reply', ()
     });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Time of day and familiarity
+// ---------------------------------------------------------------------------
+
+// Every time remark mentions the clock; no other line in eliza.js does
+// (the only other use is in the "test" rule, which these inputs avoid).
+const CLOCK = /\bclock\b/;
+const STRANGER_MARK = /introduc|acquaint|stranger|do not know you/i;
+const CONFIDANT_MARK = /\b(back|mine|yours|chair|belong|knows?|arrangement)\b/i;
+const CRISIS_START = /^(I am going|Please put|Listen carefully)/;
+const QUIET = 'xqzv plmk tuoe';   // no keyword: takes the no-keyword path
+const ALL_TAGS = ['small-hours', 'monday', 'weekend-night', 'holiday', 'long-gap', 'very-long-gap'];
+
+/** Runs fn with a fixed seed, then restores the suite's generator. */
+function withSeed(seed, fn) {
+  const saved = Math.random;
+  Math.random = mulberry32(seed);
+  try {
+    return fn();
+  } finally {
+    Math.random = saved;
+  }
+}
+
+/** Single-turn replies to one line, each from a fresh transcript. */
+function singleReplies(text, ctx, runs) {
+  return Array.from({ length: runs }, () => elizaReply([{ role: 'user', text }], ctx));
+}
+
+test('no time remark without a notable tag', () => {
+  const contexts = [undefined, {}, { time: {} }, { time: { notable: [] } },
+    { time: { notable: ['bogus', 42] } }, { time: 'noon' }, { time: { notable: 'monday' } }];
+  for (const ctx of contexts) {
+    for (const reply of singleReplies(QUIET, ctx, 200)) {
+      assert.doesNotMatch(reply, CLOCK, `ctx ${JSON.stringify(ctx)} gave "${reply}"`);
+    }
+  }
+});
+
+test('a notable time is remarked on about one reply in seven', () => {
+  const replies = singleReplies(QUIET, { time: { notable: ['monday'] } }, 800);
+  const share = replies.filter((r) => CLOCK.test(r)).length / replies.length;
+  assert.ok(share > 0.09 && share < 0.22, `time remark share ${(share * 100).toFixed(1)}%`);
+});
+
+test('every notable tag can produce a remark', () => {
+  for (const tag of ALL_TAGS) {
+    const replies = singleReplies(QUIET, { time: { notable: [tag], holiday: 'Midwinter' } }, 300);
+    assert.ok(replies.some((r) => CLOCK.test(r)), `tag ${tag} produced a remark`);
+  }
+});
+
+test('a transcript carries at most one time remark, however long it runs', () => {
+  const lines = ['xqzv plmk tuoe', 'blorp fnord wex', 'mrrk tuoe plah', 'zib zab zob',
+    'qwrt plon vexa', 'tuoe mrrk', 'fnord fnord', 'vexa zib qwrt', 'plah blorp',
+    'zob xqzv', 'wex mrrk tuoe', 'zab qwrt'];
+  const ctx = { time: { notable: ['small-hours', 'long-gap', 'holiday'], holiday: 'Midwinter' } };
+  let remarks = 0;
+  for (let run = 0; run < 60; run++) {
+    const { replies } = converse(lines, ctx);
+    const count = replies.filter((r) => CLOCK.test(r)).length;
+    assert.ok(count <= 1, `run ${run}: ${count} time remarks`);
+    remarks += count;
+  }
+  assert.ok(remarks > 0, 'some transcripts do get a time remark');
+});
+
+test('a holiday remark uses the holiday name, with a plain default when none is given', () => {
+  const named = singleReplies(QUIET, { time: { notable: ['holiday'], holiday: 'Midwinter' } }, 400)
+    .filter((r) => CLOCK.test(r));
+  assert.ok(named.length > 0, 'named holiday remarks occur');
+  for (const reply of named) assert.match(reply, /Midwinter/, reply);
+
+  const unnamed = singleReplies(QUIET, { time: { notable: ['holiday'] } }, 400)
+    .filter((r) => CLOCK.test(r));
+  assert.ok(unnamed.length > 0, 'unnamed holiday remarks occur');
+  for (const reply of unnamed) {
+    assert.match(reply, /a holiday/, reply);
+    assert.doesNotMatch(reply, /undefined|null|\(\d\)/, reply);
+  }
+});
+
+test('a time remark is never built from a placeholder or markup', () => {
+  const replies = singleReplies(QUIET, { time: { notable: ALL_TAGS, holiday: '  <b>Feast</b> ' } }, 400);
+  for (const reply of replies.filter((r) => CLOCK.test(r))) {
+    assertPlainLine(reply, 'time remark');
+  }
+});
+
+test('acquaintance is the default and changes nothing', () => {
+  const messages = [{ role: 'user', text: QUIET }];
+  for (let seed = 1; seed <= 60; seed++) {
+    const base = withSeed(seed, () => elizaReply(messages));
+    assert.equal(withSeed(seed, () => elizaReply(messages, { familiarity: 'acquaintance' })), base, `seed ${seed}`);
+    assert.equal(withSeed(seed, () => elizaReply(messages, { familiarity: 'friend' })), base, `seed ${seed}`);
+    assert.equal(withSeed(seed, () => elizaReply(messages, { time: { notable: [] } })), base, `seed ${seed}`);
+    assert.doesNotMatch(base, STRANGER_MARK, `seed ${seed}`);
+    assert.doesNotMatch(base, CONFIDANT_MARK, `seed ${seed}`);
+  }
+});
+
+test('a stranger is sometimes met with cool, formal lines', () => {
+  const replies = singleReplies(QUIET, { familiarity: 'stranger' }, 500);
+  const share = replies.filter((r) => STRANGER_MARK.test(r)).length / replies.length;
+  assert.ok(share > 0.1 && share < 0.32, `stranger line share ${(share * 100).toFixed(1)}%`);
+});
+
+test('a confidant is sometimes met with intimate lines', () => {
+  const replies = singleReplies(QUIET, { familiarity: 'confidant' }, 500);
+  const share = replies.filter((r) => CONFIDANT_MARK.test(r)).length / replies.length;
+  assert.ok(share > 0.15 && share < 0.5, `confidant line share ${(share * 100).toFixed(1)}%`);
+});
+
+test('a confidant opens the first reply more often than later replies', () => {
+  const first = singleReplies(QUIET, { familiarity: 'confidant' }, 600);
+  const firstShare = first.filter((r) => CONFIDANT_MARK.test(r)).length / first.length;
+
+  const later = [];
+  for (let i = 0; i < 600; i++) {
+    later.push(elizaReply([
+      { role: 'user', text: QUIET },
+      { role: 'diary', text: 'Hello there.' },
+      { role: 'user', text: 'blorp fnord wex' },
+    ], { familiarity: 'confidant' }));
+  }
+  const laterShare = later.filter((r) => CONFIDANT_MARK.test(r)).length / later.length;
+  assert.ok(firstShare > laterShare + 0.05, `first ${(firstShare * 100).toFixed(1)}%, later ${(laterShare * 100).toFixed(1)}%`);
+});
+
+test('stranger and confidant lines are plain text, not placeholders', () => {
+  for (const familiarity of ['stranger', 'confidant']) {
+    for (const reply of singleReplies(QUIET, { familiarity }, 300)) {
+      assertPlainLine(reply, `${familiarity}`);
+    }
+  }
+});
+
+test('crisis input gets the kind reply under every context combination', () => {
+  const contexts = [
+    undefined,
+    {},
+    { familiarity: 'stranger' },
+    { familiarity: 'confidant' },
+    { time: { notable: ALL_TAGS, holiday: 'Midwinter' } },
+    { familiarity: 'confidant', time: { notable: ['small-hours', 'holiday'], holiday: 'Midwinter' } },
+    { familiarity: 'stranger', time: { notable: ['very-long-gap', 'monday'] },
+      rewrite: 'I want to die',
+      recollections: [{ phrase: 'my sister keeps lying', topic: 'sister', kind: 'person', daysAgo: 2, relevant: true }] },
+  ];
+  const histories = [
+    [{ role: 'user', text: 'I want to die' }],
+    [{ role: 'user', text: 'Hello' }, { role: 'diary', text: 'Good evening.' }, { role: 'user', text: 'I might hurt myself' }],
+  ];
+  for (const ctx of contexts) {
+    for (const messages of histories) {
+      for (let run = 0; run < 15; run++) {
+        const reply = elizaReply(messages, ctx);
+        const label = `ctx ${JSON.stringify(ctx)}`;
+        assert.match(reply, SELF_HARM_KIND, label);
+        assert.match(reply, CRISIS_START, `${label}: no opener in front of the crisis reply`);
+        assert.doesNotMatch(reply, /\?/, label);
+      }
+    }
+  }
+  const rewritten = elizaReply([{ role: 'user', text: 'I am done' }],
+    { familiarity: 'confidant', rewrite: 'I want to die' });
+  assert.match(rewritten, CRISIS_START);
+});
+
+test('the conversation guarantees still hold with time and familiarity set', () => {
+  for (const familiarity of ['stranger', 'confidant']) {
+    const ctx = { familiarity, time: { notable: ALL_TAGS, holiday: 'Midwinter' } };
+    for (let run = 0; run < 40; run++) {
+      const { replies } = converse(CONVERSATION, ctx);
+      replies.forEach((r, i) => {
+        assertPlainLine(r, `${familiarity} run ${run} turn ${i + 1}`);
+        if (i > 0) assert.notEqual(r, replies[i - 1], `${familiarity} run ${run} turn ${i + 1}: repeat`);
+      });
+      assert.match(replies[SELF_HARM_TURN], SELF_HARM_KIND, `${familiarity} run ${run}`);
+      assert.doesNotMatch(replies[SELF_HARM_TURN], /\?/, `${familiarity} run ${run}`);
+    }
+  }
+});
+
+test('the stress guarantees hold with time and familiarity set', () => {
+  const rand = mulberry32(11);
+  for (const familiarity of ['stranger', 'confidant']) {
+    const ctx = { familiarity, time: { notable: ALL_TAGS, holiday: 'Midwinter' } };
+    let total = 0;
+    let questions = 0;
+    let tripleRuns = 0;
+    for (let run = 0; run < 100; run++) {
+      const transcript = [];
+      let questionRun = 0;
+      let previous = null;
+      for (let turn = 0; turn < 10; turn++) {
+        const text = randomLine(rand);
+        transcript.push({ role: 'user', text });
+        const out = elizaReply(transcript, ctx);
+        assertPlainLine(out, `${familiarity} stress run ${run} turn ${turn} input "${text}"`);
+        assert.notEqual(out, previous, `${familiarity} stress run ${run} turn ${turn}: repeated`);
+        previous = out;
+        transcript.push({ role: 'diary', text: out });
+        total++;
+        if (out.endsWith('?')) {
+          questions++;
+          questionRun++;
+          if (questionRun === 3) tripleRuns++;
+        } else {
+          questionRun = 0;
+        }
+      }
+    }
+    assert.equal(tripleRuns, 0, `${familiarity}: never three questions in a row`);
+    const share = questions / total;
+    assert.ok(share <= 0.45, `${familiarity}: question share ${(share * 100).toFixed(1)}%`);
+  }
+});

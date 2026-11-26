@@ -4,7 +4,10 @@ import { initEngine, resetEngine, builtinStatus, reply, makeTitle } from './ai.j
 import * as mind from './mind.js';
 import { registerPWA } from './pwa.js';
 import { startDoodle, renderDoodle } from './doodle.js';
-import { InkWriter } from './ink.js';
+import { InkWriter, renderInk } from './ink.js';
+import { timeContext } from './timesense.js';
+import { familiarity } from './familiarity.js';
+import { composeOverture } from './overture.js';
 import { loadNlp } from './nlp.js';
 import { initEmbedder } from './embed.js';
 import { remember, recollect, backfill } from './memory.js';
@@ -162,6 +165,8 @@ $('#mind-control').addEventListener('click', async () => {
 });
 
 // ---------- Table of contents ----------
+let freshTitleId = null; // a session whose title was just revised (animate it once)
+
 async function renderToc() {
   const sessions = await db.listSessions();
   tocList.innerHTML = '';
@@ -170,7 +175,22 @@ async function renderToc() {
     li.dataset.id = s.id;
     if (current && current.id === s.id) li.classList.add('active');
     li.innerHTML = '<span class="toc-title"></span><span class="toc-leader"></span><time class="toc-date"></time>';
-    li.querySelector('.toc-title').textContent = s.title || UNTITLED;
+    const titleEl = li.querySelector('.toc-title');
+    const old = s.titleHistory?.at(-1);
+    if (old && s.title) {
+      // issue #17: the previous insult is struck through and the new one written beside it
+      const fresh = freshTitleId === s.id;
+      const sEl = document.createElement('s');
+      sEl.className = fresh ? 'toc-old' : 'toc-old lined';
+      sEl.textContent = old;
+      const nEl = document.createElement('span');
+      nEl.className = fresh ? 'toc-current fresh-ink' : 'toc-current';
+      nEl.textContent = s.title;
+      titleEl.append(sEl, nEl);
+      if (fresh) requestAnimationFrame(() => requestAnimationFrame(() => sEl.classList.add('lined')));
+    } else {
+      titleEl.textContent = s.title || UNTITLED;
+    }
     li.querySelector('.toc-date').textContent = fmtShort(s.createdAt);
     li.addEventListener('click', () => selectSession(s.id));
     tocList.appendChild(li);
@@ -235,7 +255,7 @@ function makeEntry(role, text, { animate = false, doodle = null } = {}) {
   } else if (animate) {
     new InkWriter(p, { onProgress: follow }).finish(text);
   } else {
-    p.textContent = text;
+    renderInk(p, text);
     p.classList.add('done');
   }
   return div;
@@ -243,13 +263,16 @@ function makeEntry(role, text, { animate = false, doodle = null } = {}) {
 
 
 
-function renderSession() {
+function renderSession({ animateLast = false } = {}) {
   if (!current) return;
   $('#session-title').textContent = current.title || UNTITLED;
   $('#session-date').textContent = fmtDate(current.createdAt);
   $('#session-date').dateTime = new Date(current.createdAt).toISOString();
   entriesEl.innerHTML = '';
-  for (const m of current.messages) entriesEl.appendChild(makeEntry(m.role, m.text, { doodle: m.doodle }));
+  current.messages.forEach((m, i) => {
+    const animate = animateLast && i === current.messages.length - 1;
+    entriesEl.appendChild(makeEntry(m.role, m.text, { doodle: m.doodle, animate }));
+  });
   spread = 0;
   follow();
 }
@@ -266,15 +289,43 @@ async function selectSession(id) {
 
 async function newSession() {
   if (busy) return;
+  // issue #14: sometimes the diary has already written something on the fresh page
+  let overture = null;
+  try {
+    const [sessions, memories] = await Promise.all([db.listSessions(), db.listMemories()]);
+    overture = composeOverture({ sessions, memories, lastOvertureAt: readStore('dd-overture-at') });
+  } catch { /* the diary can hold its tongue */ }
   current = await db.createSession();
-  renderSession();
+  if (overture) {
+    current.messages.push({ role: 'diary', text: overture.text, ts: Date.now(), overture: overture.kind });
+    await db.saveSession(current);
+    writeStore('dd-overture-at', Date.now());
+  }
+  renderSession({ animateLast: !!overture });
   await renderToc();
   setView('session');
   follow();
   input.focus({ preventScroll: true });
 }
 
+function readStore(key) {
+  try { const v = Number(localStorage.getItem(key)); return Number.isFinite(v) && v > 0 ? v : null; } catch { return null; }
+}
+function writeStore(key, value) {
+  try { localStorage.setItem(key, String(value)); } catch { /* ignore */ }
+}
+
 // ---------- Conversation ----------
+const MAX_TITLE_REVISIONS = 2;
+const REVISE_AT_USER_MESSAGES = [4, 8];
+const RETURN_AFTER_MS = 24 * 3600 * 1000;
+
+function shouldReviseTitle(session, prevTs) {
+  if (!session.title || (session.titleHistory?.length || 0) >= MAX_TITLE_REVISIONS) return false;
+  const userCount = session.messages.filter((m) => m.role === 'user').length;
+  const returned = prevTs && Date.now() - prevTs > RETURN_AFTER_MS;
+  return REVISE_AT_USER_MESSAGES.includes(userCount) || !!returned;
+}
 async function submit() {
   const text = input.value.trim();
   if (!text || busy || !current) return;
@@ -329,7 +380,11 @@ async function submit() {
   let answer;
   let recollections = [];
   try { recollections = await recollect(session.id, text); } catch { /* memory is optional */ }
-  try { answer = await reply(session.messages, { recollections }, { onText: (piece) => ensureWriter().append(piece) }); }
+  const prevTs = session.messages.at(-2)?.ts ?? null; // the message before this one, if any
+  const time = timeContext(new Date(), { lastMessageTs: prevTs });
+  let level = 'acquaintance';
+  try { level = familiarity(await db.listSessions()).level; } catch { /* default */ }
+  try { answer = await reply(session.messages, { recollections, time, familiarity: level }, { onText: (piece) => ensureWriter().append(piece) }); }
   catch { answer = 'The diary declines to answer. How very like you to have asked.'; }
 
   ensureWriter().finish(answer).then(() => entriesEl.setAttribute('aria-busy', 'false'));
@@ -345,6 +400,20 @@ async function submit() {
       if (current && current.id === session.id) $('#session-title').textContent = session.title;
       await renderToc();
     } catch { /* leave untitled */ }
+  } else if (shouldReviseTitle(session, prevTs)) {
+    // issue #17: as the entry goes on (or is returned to), the diary may think of a sharper insult
+    try {
+      const next = await makeTitle(session.messages, { previous: session.title });
+      if (next && next !== session.title) {
+        session.titleHistory = [...(session.titleHistory || []), session.title];
+        session.title = next;
+        await db.saveSession(session);
+        if (current && current.id === session.id) $('#session-title').textContent = session.title;
+        freshTitleId = session.id;
+        await renderToc();
+        freshTitleId = null;
+      }
+    } catch { /* keep the old insult */ }
   }
 
   busy = false;

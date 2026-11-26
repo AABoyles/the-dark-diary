@@ -42,7 +42,9 @@ export async function createLlm({ onProgress }) {
 }`;
 
 const FINAL = 'Washing blood from a silk shirt. And you, I suspect, spent yours hoping no one would ask.';
-const diaryText = (page) => page.evaluate(() => document.querySelector('.entry.diary .ink')?.textContent ?? null);
+// the streamed reply is the diary entry that follows the user's message (a first entry may open with a note)
+const REPLY = '#entries .entry.user ~ .entry.diary .ink';
+const diaryText = (page) => page.evaluate((sel) => document.querySelector(sel)?.textContent ?? null, REPLY);
 
 async function streamingPage(firstTokenMs) {
   const page = await newPage(browser, { mindChoice: 'small' });
@@ -63,12 +65,12 @@ test('a streamed reply appears while it is still being generated, cleaned as it 
   await page.press('#entry-input', 'Enter');
 
   // ink starts long before the ~2.5 s generation finishes
-  await page.waitForFunction(() => (document.querySelector('.entry.diary .ink')?.textContent || '').length > 0, null, { timeout: 5000 });
+  await page.waitForFunction((sel) => (document.querySelector(sel)?.textContent || '').length > 0, REPLY, { timeout: 5000 });
   const early = await diaryText(page);
   assert.ok(FINAL.startsWith(early), `partial text ${JSON.stringify(early)} must be a prefix of the final reply`);
   assert.ok(early.length < FINAL.length, 'text should still be arriving');
 
-  await page.waitForSelector('.entry.diary .ink.done', { timeout: 30000 });
+  await page.waitForSelector(`${REPLY}.done`, { timeout: 30000 });
   assert.equal(await diaryText(page), FINAL);
   assert.equal(await page.getAttribute('#entries', 'aria-busy'), 'false');
   assert.equal(await page.locator('.doodle path').count(), 0, 'a quick first token means no doodle');
@@ -82,14 +84,14 @@ test('a slow first token starts the doodle, which stops (and is kept) when text 
   await page.press('#entry-input', 'Enter');
 
   await page.waitForSelector('.doodle path', { timeout: 6000 });
-  await page.waitForFunction(() => (document.querySelector('.entry.diary .ink')?.textContent || '').length > 0, null, { timeout: 10000 });
-  await page.waitForSelector('.entry.diary .ink.done', { timeout: 30000 });
+  await page.waitForFunction((sel) => (document.querySelector(sel)?.textContent || '').length > 0, REPLY, { timeout: 10000 });
+  await page.waitForSelector(`${REPLY}.done`, { timeout: 30000 });
   const strokes = await page.locator('.doodle path').count();
   assert.ok(strokes >= 1 && strokes <= 4, `pen should stop soon after the first token (got ${strokes} strokes)`);
   const saved = await page.evaluate(async () => {
     const db = await import('./js/db.js');
     const [s] = await db.listSessions();
-    return s.messages[0].doodle?.length ?? 0;
+    return s.messages.find((m) => m.role === 'user').doodle?.length ?? 0;
   });
   assert.equal(saved, strokes, 'the doodle is saved with the message');
   assert.deepEqual(page.errors, []);

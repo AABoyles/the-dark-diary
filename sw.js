@@ -3,7 +3,7 @@
 // Model weights share the 'transformers-cache' store that transformers.js uses,
 // so multi-GB files are never stored twice.
 
-const VERSION = 'v6';
+const VERSION = 'v7';
 const SHELL_CACHE = `dark-diary-shell-${VERSION}`;
 const SHELL_PREFIX = 'dark-diary-shell-';
 const VENDOR_CACHE = 'dark-diary-vendor';
@@ -22,6 +22,11 @@ const SHELL = [
   'js/eliza.js',
   'js/clean.js',
   'js/ink.js',
+  'js/crisis.js',
+  'js/strike.js',
+  'js/timesense.js',
+  'js/familiarity.js',
+  'js/overture.js',
   'js/mind.js',
   'js/nlp.js',
   'js/embed.js',

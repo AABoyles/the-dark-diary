@@ -23,6 +23,10 @@ import { createLlm } from './llm-client.js';
 import { matchIntent } from './embed.js';
 import { memoryNote } from './memory.js';
 import { clean, cleanTitle, streamPrefix } from './clean.js';
+import { isCrisis, crisisReply } from './crisis.js';
+import { maybeStrike, stripStrikes, hasStrike } from './strike.js';
+import { timeNote } from './timesense.js';
+import { familiarityNote } from './familiarity.js';
 
 // Which model to load (and whether to load one at all) is decided by the app
 // with js/mind.js and passed to initEngine(); see GitHub issues #6 and #25.
@@ -232,7 +236,8 @@ async function loadTransformers(plan) {
 // ---------------------------------------------------------------------------
 
 function toTurn(m) {
-  return { role: m?.role === 'diary' ? 'assistant' : 'user', content: String(m?.text ?? '') };
+  // strike markup is display-only; the model sees the gentle text (and isn't encouraged to overuse it)
+  return { role: m?.role === 'diary' ? 'assistant' : 'user', content: stripStrikes(String(m?.text ?? '')) };
 }
 
 function enqueue(task) {
@@ -300,14 +305,33 @@ async function generateRaw(persona, messages, instruction, maxTokens, onRaw = nu
 // Public generation API
 // ---------------------------------------------------------------------------
 
+// Issue #13: occasionally the diary crosses a word out. Rare by design.
+const STRIKE_CHANCE = 0.25;   // chance a reply is *allowed* one (the model may still not use it)
+const STRIKE_NOTE = `
+
+In this reply only, you may (but need not) cross out ONE cruel word and replace it with a gentler one, written exactly like this: ~~devour~~ enjoy. Use it only if it lands naturally.`;
+
+const recentDiaryTexts = (messages) => messages.filter((m) => m.role === 'diary').slice(-4).map((m) => m.text);
+
 /**
  * The diary's next line, given the transcript (the last message is the user's).
+ * ctx: { recollections, time, familiarity } (see js/memory.js, js/timesense.js, js/familiarity.js).
  * Resolves with the final, cleaned text. When `onText` is given, cleaned text is
  * also delivered as it streams in, as appended pieces (issue #7); the caller
  * should reconcile with the resolved text, which may differ in rare cases
  * (e.g. generation failed mid-way and a scripted line was used instead).
+ *
+ * Self-harm language (issue #10) is checked first, by phrase and, when the
+ * embedding model is ready, by meaning; it is answered directly with a kind,
+ * menace-free reply and no model is involved.
  */
-export function reply(messages, ctx = {}, { onText } = {}) {
+export async function reply(messages, ctx = {}, { onText } = {}) {
+  const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.text || '';
+  try {
+    const c = await isCrisis(lastUser);
+    if (c.crisis) return crisisReply(recentDiaryTexts(messages));
+  } catch { /* never let the check itself break a reply; eliza.js has its own phrase check */ }
+
   // While the model is still loading (weights downloading, warming up) answer
   // at once with the scripted ELIZA-style engine instead of making the user wait.
   if (!engine) return scripted(messages, ctx);
@@ -315,17 +339,22 @@ export function reply(messages, ctx = {}, { onText } = {}) {
     const eng = await ensureEngine();
     if (eng.backend !== 'scripted') {
       try {
-        const persona = eng.short ? PERSONA_SHORT : PERSONA;
+        const allowStrike = !recentDiaryTexts(messages).some(hasStrike) && Math.random() < STRIKE_CHANCE;
+        const persona = (eng.short ? PERSONA_SHORT : PERSONA)
+          + memoryNote(ctx.recollections)
+          + (ctx.time ? prefixed(timeNote(ctx.time)) : '')
+          + (ctx.familiarity ? prefixed(familiarityNote(ctx.familiarity)) : '')
+          + (allowStrike && !eng.short ? STRIKE_NOTE : '');
         let shown = '';
         const onRaw = onText ? (raw) => {
-          const p = streamPrefix(raw);
+          const p = streamPrefix(raw, { allowStrike });
           if (p.length > shown.length && p.startsWith(shown)) {
             const piece = p.slice(shown.length);
             shown = p;
             try { onText(piece); } catch { /* a display hiccup must not stop generation */ }
           }
         } : null;
-        const out = clean(await generateRaw(persona + memoryNote(ctx.recollections), messages, '', REPLY_MAX_TOKENS, onRaw));
+        const out = clean(await generateRaw(persona, messages, '', REPLY_MAX_TOKENS, onRaw), { allowStrike });
         if (out) return out;
       } catch (err) {
         console.warn('[ai] Generation failed, using a scripted line.', err);
@@ -334,6 +363,8 @@ export function reply(messages, ctx = {}, { onText } = {}) {
     return scripted(messages, ctx);
   });
 }
+
+const prefixed = (note) => (note ? `\n\n${note}` : '');
 
 /**
  * The ELIZA-style engine, helped by the small embedding model: if the user's
@@ -344,24 +375,36 @@ async function scripted(messages, ctx) {
   const last = [...messages].reverse().find((m) => m.role === 'user');
   let rewrite = null;
   try { rewrite = (await matchIntent(last?.text || ''))?.canonical || null; } catch { /* ignore */ }
-  return scriptedReply(messages, { ...ctx, rewrite });
+  const line = scriptedReply(messages, { ...ctx, rewrite });
+  return maybeStrike(line, { recentDiary: recentDiaryTexts(messages) });
 }
 
 /**
  * A short, grim or passive-aggressive title for the entry.
+ * With { previous }, a revised, sharper title that differs from it (issue #17).
  */
-export function makeTitle(messages) {
-  if (!engine) return Promise.resolve(scriptedTitle(messages));
+export function makeTitle(messages, { previous = null } = {}) {
+  const scriptedNew = () => {
+    for (let i = 0; i < 6; i++) {
+      const t = scriptedTitle(messages);
+      if (t !== previous) return t;
+    }
+    return scriptedTitle(messages);
+  };
+  if (!engine) return Promise.resolve(scriptedNew());
   return enqueue(async () => {
     const eng = await ensureEngine();
     if (eng.backend !== 'scripted') {
       try {
-        const title = cleanTitle(await generateRaw(TITLE_PERSONA, messages, TITLE_INSTRUCTION, TITLE_MAX_TOKENS));
-        if (title) return title;
+        const instruction = previous
+          ? `The entry is currently titled "${previous}". The conversation has moved on: write a NEW, sharper title for it. Do not reuse the old one. Output only the title.`
+          : TITLE_INSTRUCTION;
+        const title = cleanTitle(await generateRaw(TITLE_PERSONA, messages, instruction, TITLE_MAX_TOKENS));
+        if (title && title !== previous) return title;
       } catch (err) {
         console.warn('[ai] Title generation failed, using a scripted title.', err);
       }
     }
-    return scriptedTitle(messages);
+    return scriptedNew();
   });
 }
