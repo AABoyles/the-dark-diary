@@ -125,6 +125,7 @@ export async function openBook(page) {
   await page.waitForSelector('#book.open');
   await page.waitForSelector('#toc-page', { state: 'visible' });
   await settle(page);
+  await pageTurned(page);
 }
 
 /** Starts a new entry from the contents page and waits for the writing area. */
@@ -135,11 +136,18 @@ export async function newEntry(page) {
   await pageTurned(page);
 }
 
-/** Waits until no page is mid-turn (js/pageturn.js overlays are gone). */
+/**
+ * Waits until the book has finished moving: no page mid-turn, and no navigation
+ * in progress (js/app.js marks #book with data-navigating from the click until
+ * focus has settled).
+ */
 export async function pageTurned(page) {
-  await page.waitForFunction(() => !document.querySelector('.page-turn'), null, { timeout: 10000 });
+  await page.waitForFunction(
+    () => !document.querySelector('.page-turn') && !document.querySelector('#book[data-navigating]'),
+    null,
+    { timeout: 10000 },
+  );
 }
-
 /** Opens the n-th entry (0-based) from the contents and waits for the page to turn. */
 export async function openEntry(page, n = 0) {
   await page.locator('#toc-list li').nth(n).click();

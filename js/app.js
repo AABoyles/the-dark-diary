@@ -51,7 +51,7 @@ function openBook() {
   coverCreak();
   startEngine();
   // the cover is gone: put focus somewhere useful (issue #41)
-  setTimeout(() => $('#new-session').focus({ preventScroll: true }), 50);
+  navigating(() => new Promise((r) => setTimeout(() => { $('#new-session').focus({ preventScroll: true }); r(); }, 50)));
 }
 $('#cover').addEventListener('click', openBook);
 $('#cover').addEventListener('keydown', (e) => {
@@ -255,8 +255,15 @@ viewport.addEventListener('scroll', () => { viewport.scrollLeft = 0; });
 const turn = (d) => {
   const next = Math.max(0, Math.min(spreads - 1, spread + d));
   if (next === spread || isTurning()) return;
-  turnSpread(() => { spread = next; layout(); }, d > 0 ? 'forward' : 'back');
+  navigating(() => turnSpread(() => { spread = next; layout(); }, d > 0 ? 'forward' : 'back'));
 };
+
+// While the book is moving between views (from the click until focus has settled),
+// #book carries data-navigating: tests and assistive code can wait on it.
+async function navigating(fn) {
+  book.dataset.navigating = '1';
+  try { return await fn(); } finally { delete book.dataset.navigating; }
+}
 
 // Turn a leaf of the book while `change` updates the real DOM (issue #20).
 function turnSpread(change, dir) {
@@ -305,8 +312,11 @@ function renderSession({ animateLast = false } = {}) {
   follow();
 }
 
-async function selectSession(id) {
+function selectSession(id) {
   if (busy || isTurning()) return;
+  return navigating(() => selectSessionNow(id));
+}
+async function selectSessionNow(id) {
   current = (await db.getSession(id)) || null;
   await turnSpread(async () => {
     renderSession();
@@ -317,8 +327,11 @@ async function selectSession(id) {
   if (current) input.focus({ preventScroll: true });
 }
 
-async function newSession() {
+function newSession() {
   if (busy || isTurning()) return;
+  return navigating(newSessionNow);
+}
+async function newSessionNow() {
   // issue #14: sometimes the diary has already written something on the fresh page
   let overture = null;
   try {
@@ -490,11 +503,13 @@ input.addEventListener('keydown', (e) => {
 });
 
 $('#new-session').addEventListener('click', newSession);
-$('#back-to-toc').addEventListener('click', async () => {
+$('#back-to-toc').addEventListener('click', () => {
   if (isTurning()) return;
   const leaving = current?.id;
-  await turnSpread(() => setView('toc'), 'back');
-  focusContents(leaving);
+  navigating(async () => {
+    await turnSpread(() => setView('toc'), 'back');
+    focusContents(leaving);
+  });
 });
 
 // After returning to the contents, focus the entry just left, else "Write a new entry".
@@ -505,13 +520,15 @@ function focusContents(id = null) {
 $('#delete-session').addEventListener('click', async () => {
   if (!current || busy) return;
   if (!confirm('Burn this entry? The diary will not remember it fondly, or at all.')) return;
-  await db.deleteSession(current.id);
-  current = null;
-  await turnSpread(async () => {
-    await renderToc();
-    setView('toc');
-  }, 'back');
-  focusContents();
+  await navigating(async () => {
+    await db.deleteSession(current.id);
+    current = null;
+    await turnSpread(async () => {
+      await renderToc();
+      setView('toc');
+    }, 'back');
+    focusContents();
+  });
 });
 
 // ---------- Boot ----------
