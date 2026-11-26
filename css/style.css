@@ -1051,6 +1051,92 @@ body {
 
 
 /* -------------------------------------------------------------------------
+   13c. The diary's mind: a note asking before any model download
+   ------------------------------------------------------------------------- */
+
+#mind-slip {
+  flex: none;
+  margin: 0.6rem 0 0.9rem;
+  padding: 0.8rem 1rem 0.7rem;
+  background: linear-gradient(168deg, rgba(255, 250, 235, 0.55), rgba(225, 205, 160, 0.45));
+  border: 1px solid rgba(96, 62, 30, 0.35);
+  box-shadow: 0 2px 6px rgba(60, 35, 10, 0.25);
+  transform: rotate(-0.6deg);
+  font-family: 'IM Fell English', Georgia, serif;
+  color: var(--page-ink);
+}
+#mind-slip[hidden] { display: none; }
+
+#mind-note {
+  margin: 0 0 0.55rem;
+  font-style: italic;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+#mind-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+#mind-options button {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.6rem;
+  padding: 0.25rem 0.2rem;
+  background: none;
+  border: 0;
+  border-bottom: 1px dotted rgba(96, 62, 30, 0.3);
+  text-align: left;
+  font: inherit;
+  font-size: 0.98rem;
+  color: var(--ink-diary);
+  cursor: pointer;
+  transition: color 0.3s, letter-spacing 0.3s;
+}
+#mind-options button:last-child { border-bottom: 0; color: var(--ink-faded); }
+#mind-options button:hover,
+#mind-options button:focus-visible { color: #6b1010; letter-spacing: 0.01em; outline: none; }
+#mind-options button:focus-visible { text-decoration: underline; }
+
+.mind-size {
+  font-style: italic;
+  font-size: 0.78rem;
+  color: var(--ink-faded);
+}
+
+.mind-advised {
+  font-variant: small-caps;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-diary);
+  border: 1px solid rgba(58, 13, 13, 0.4);
+  border-radius: 2px;
+  padding: 0 0.3em;
+}
+
+#mind-control {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 0.15rem;
+  padding: 0;
+  background: none;
+  border: 0;
+  font-family: 'IM Fell English', Georgia, serif;
+  font-style: italic;
+  font-size: 0.68rem;
+  color: var(--ink-faded);
+  opacity: 0.75;
+  cursor: pointer;
+}
+#mind-control[hidden] { display: none; }
+#mind-control:hover,
+#mind-control:focus-visible { opacity: 1; color: var(--ink-diary); }
+
+
+/* -------------------------------------------------------------------------
    14. Reduced motion: show final states, no animation
    ------------------------------------------------------------------------- */
 

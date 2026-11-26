@@ -1,6 +1,7 @@
 // The Dark Diary — UI glue: book open/close, table of contents, sessions, ink effects.
 import * as db from './db.js';
-import { initEngine, reply, makeTitle } from './ai.js';
+import { initEngine, resetEngine, builtinStatus, reply, makeTitle } from './ai.js';
+import * as mind from './mind.js';
 import { registerPWA } from './pwa.js';
 import { startDoodle, renderDoodle } from './doodle.js';
 import { loadNlp } from './nlp.js';
@@ -45,18 +46,120 @@ $('#cover').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openBook(); }
 });
 
-function startEngine() {
+// ---------- The diary's mind (which model, if any; issues #6 and #25) ----------
+const status = $('#engine-status');
+const showStatus = (msg) => { status.textContent = msg; };
+let device = null;
+let builtin = 'none';
+
+const MIND_NAMES = { builtin: 'borrowed', large: 'cultivated', small: 'modest', none: 'old habits' };
+
+async function startEngine() {
   if (engineStarted) return;
   engineStarted = true;
-  const status = $('#engine-status');
-  initEngine((msg) => { status.textContent = msg; })
-    .then(({ backend }) => {
-      if (backend === 'prompt-api') status.textContent = 'The diary stirs. (on-device)';
-      else if (backend === 'transformers') status.textContent = 'The diary stirs. (fetched model)';
-      setTimeout(() => { if (backend !== 'scripted') status.textContent = ''; }, 4000);
-    })
-    .catch(() => { status.textContent = 'The diary is indisposed.'; });
+  [device, builtin] = await Promise.all([mind.assessDevice(), builtinStatus()]);
+  let choice = mind.getChoice();
+  // A stored choice that no longer fits this device/browser is asked again.
+  if (choice === 'builtin' && !['available', 'downloadable', 'downloading'].includes(builtin)) choice = null;
+  if ((choice === 'large' || choice === 'small') && !mind.plan(choice, device)) choice = null;
+  // Automatic decisions (data saver, slow network, built-in model present) are re-evaluated each visit.
+  if (choice && mind.wasAutomatic()) choice = null;
+  if (!choice) {
+    const auto = mind.autoDecision(device, builtin);
+    if (auto) { choice = auto; mind.setChoice(auto, { auto: true }); }
+  }
+  if (!choice) { showMindSlip(); return; } // until they answer, the scripted engine replies
+  bootMind(choice);
 }
+
+function mindFor(choice) {
+  if (choice === 'builtin') return { builtin: true };
+  if (choice === 'large' || choice === 'small') {
+    const p = mind.plan(choice, device);
+    if (!p) return null;
+    const plans = [p];
+    const cpu = mind.TIERS[choice].cpuDtype;
+    if (p.device === 'webgpu' && cpu) plans.push({ ...p, device: 'wasm', dtype: cpu });
+    return { plans, short: choice === 'small' };
+  }
+  return null;
+}
+
+async function bootMind(choice) {
+  updateMindControl(choice);
+  await resetEngine();
+  if (choice === 'none') { showStatus(''); return; }
+  initEngine(showStatus, mindFor(choice))
+    .then(({ backend }) => {
+      if (backend === 'prompt-api') showStatus('The diary stirs. (the browser lent it a mind)');
+      else if (backend === 'transformers') showStatus(`The diary stirs. (a ${MIND_NAMES[choice]} mind)`);
+      setTimeout(() => { if (backend !== 'scripted') showStatus(''); }, 4000);
+    })
+    .catch(() => showStatus('The diary is indisposed.'));
+}
+
+function updateMindControl(choice) {
+  const btn = $('#mind-control');
+  btn.hidden = false;
+  btn.textContent = choice === 'none'
+    ? 'The diary keeps its old habits · grow a mind'
+    : `The diary's mind: ${MIND_NAMES[choice]} · change`;
+}
+
+const OPTION_TEXT = {
+  builtin: 'Borrow the browser’s own mind',
+  large: 'Grow a cultivated mind',
+  small: 'Grow a modest mind',
+  none: 'Not now. Keep your old habits.',
+};
+
+function showMindSlip() {
+  const slip = $('#mind-slip');
+  const note = [`I could grow a mind, if you would allow it. Until then I make do with old habits, which are cheap and a little repetitive.`];
+  if (device.saveData) note.push('You are saving data; I would not dream of spending it without asking.');
+  else if (device.slowNetwork) note.push('Your connection is a thin thread. Choose modestly.');
+  if (!device.webgpu) note.push('Your machine lacks the graphics card a cultivated mind requires.');
+  $('#mind-note').textContent = note.join(' ');
+
+  const opts = mind.options(device, builtin);
+  const recommended = mind.recommend(device, builtin);
+  const box = $('#mind-options');
+  box.innerHTML = '';
+  for (const c of opts) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.choice = c;
+    const label = document.createElement('span');
+    label.textContent = OPTION_TEXT[c];
+    const size = document.createElement('span');
+    size.className = 'mind-size';
+    if (c === 'large' || c === 'small') {
+      size.textContent = mind.TIERS[c].approx;
+      mind.downloadSize(c, device).then((n) => { if (n) size.textContent = mind.formatBytes(n); }).catch(() => {});
+    } else if (c === 'builtin') {
+      size.textContent = builtin === 'available' ? 'already here' : 'the browser fetches it; several gigabytes';
+    }
+    b.append(label, size);
+    if (c === recommended && c !== 'none') {
+      const tag = document.createElement('span');
+      tag.className = 'mind-advised';
+      tag.textContent = 'advised';
+      b.append(tag);
+    }
+    b.addEventListener('click', () => {
+      mind.setChoice(c);
+      slip.hidden = true;
+      bootMind(c);
+    });
+    box.appendChild(b);
+  }
+  slip.hidden = false;
+}
+
+$('#mind-control').addEventListener('click', async () => {
+  if (!device) [device, builtin] = await Promise.all([mind.assessDevice(), builtinStatus()]);
+  showMindSlip();
+});
 
 // ---------- Table of contents ----------
 async function renderToc() {
