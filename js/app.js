@@ -1,13 +1,17 @@
 // The Dark Diary — UI glue: book open/close, table of contents, sessions, ink effects.
 import * as db from './db.js';
 import { initEngine, reply, makeTitle } from './ai.js';
+import { registerPWA } from './pwa.js';
 
 const $ = (s) => document.querySelector(s);
 const book = $('#book');
 const tocList = $('#toc-list');
 const entriesEl = $('#entries');
 const input = $('#entry-input');
-const sessionPage = $('#session-page');
+const flowView = $('#flow-view');
+const viewport = $('#flow-viewport');
+const flow = $('#flow');
+const pagesEl = $('#pages');
 
 const CHAR_DELAY_MS = 38; // must match css/style.css (--i * 38ms)
 const UNTITLED = 'An Entry Not Yet Mocked';
@@ -15,6 +19,9 @@ const UNTITLED = 'An Entry Not Yet Mocked';
 let current = null; // active session
 let busy = false;
 let engineStarted = false;
+let spread = 0;      // index of the spread being shown
+let spreads = 1;
+let perSpread = 2;   // pages per spread: 2 on wide screens, 1 on phones
 
 const fmtDate = (ts) =>
   new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
@@ -63,7 +70,50 @@ async function renderToc() {
 }
 
 // ---------- Session page ----------
-function setView(view) { book.dataset.view = view; }
+function setView(view) {
+  book.dataset.view = view;
+  flowView.hidden = view !== 'session';
+  if (view === 'session') layout();
+}
+
+// ---------- Pagination ----------
+// The entry is a single multi-column flow (CSS columns, one column per page).
+// Column 0 is a blank spacer so an entry always starts on a right-hand page;
+// we slide the flow by whole spreads.
+function layout({ follow = false } = {}) {
+  if (flowView.hidden) return;
+  perSpread = matchMedia('(min-width: 760px)').matches ? 2 : 1;
+  const pad = parseFloat(getComputedStyle($('#toc-page')).paddingLeft) || 32;
+  const colw = Math.floor(pagesEl.clientWidth / perSpread - 2 * pad);
+  const gap = 2 * pad;
+  viewport.style.setProperty('--pad', `${pad}px`);
+  viewport.style.setProperty('--colw', `${colw}px`);
+  viewport.style.setProperty('--gap', `${gap}px`);
+  const step = (flow.clientWidth + gap) / perSpread;
+  const cols = Math.max(1, Math.round((flow.scrollWidth + gap) / step));
+  spreads = Math.ceil(cols / perSpread);
+  spread = follow ? spreads - 1 : Math.min(spread, spreads - 1);
+  flow.style.transform = `translateX(${-spread * perSpread * step}px)`;
+  const first = spread * perSpread, last = Math.min(cols, first + perSpread) - 1;
+  // desktop: column 0 is the blank spacer, so column n is page n
+  const pageNo = (c) => (perSpread === 2 ? c : c + 1);
+  const a = pageNo(first), b = pageNo(last);
+  $('#spread-label').textContent = a === b ? `${a}` : (a < 1 ? `${b}` : `${a}–${b}`);
+  $('#prev-spread').disabled = spread === 0;
+  $('#next-spread').disabled = spread >= spreads - 1;
+}
+const follow = () => requestAnimationFrame(() => layout({ follow: true }));
+new ResizeObserver(() => layout()).observe(pagesEl);
+// Focus/selection can scroll the clipped viewport; keep it pinned.
+viewport.addEventListener('scroll', () => { viewport.scrollLeft = 0; });
+const turn = (d) => { spread = Math.max(0, Math.min(spreads - 1, spread + d)); layout(); };
+$('#prev-spread').addEventListener('click', () => turn(-1));
+$('#next-spread').addEventListener('click', () => turn(1));
+flowView.addEventListener('keydown', (e) => {
+  if (e.target === input) return;
+  if (e.key === 'ArrowLeft') turn(-1);
+  if (e.key === 'ArrowRight') turn(1);
+});
 
 function makeEntry(role, text, { animate = false } = {}) {
   const div = document.createElement('div');
@@ -99,18 +149,16 @@ function writeInk(p, text) {
   return total;
 }
 
-function scrollDown() { entriesEl.scrollTop = entriesEl.scrollHeight; }
 
 function renderSession() {
-  const empty = !current;
-  sessionPage.classList.toggle('empty', empty);
-  if (empty) return;
+  if (!current) return;
   $('#session-title').textContent = current.title || UNTITLED;
   $('#session-date').textContent = fmtDate(current.createdAt);
   $('#session-date').dateTime = new Date(current.createdAt).toISOString();
   entriesEl.innerHTML = '';
   for (const m of current.messages) entriesEl.appendChild(makeEntry(m.role, m.text));
-  scrollDown();
+  spread = 0;
+  follow();
 }
 
 async function selectSession(id) {
@@ -119,7 +167,8 @@ async function selectSession(id) {
   renderSession();
   await renderToc();
   setView('session');
-  if (current) input.focus();
+  follow();
+  if (current) input.focus({ preventScroll: true });
 }
 
 async function newSession() {
@@ -128,7 +177,8 @@ async function newSession() {
   renderSession();
   await renderToc();
   setView('session');
-  input.focus();
+  follow();
+  input.focus({ preventScroll: true });
 }
 
 // ---------- Conversation ----------
@@ -142,13 +192,14 @@ async function submit() {
 
   session.messages.push({ role: 'user', text, ts: Date.now() });
   entriesEl.appendChild(makeEntry('user', text, { animate: true }));
+  follow();
   await db.saveSession(session);
 
   const pending = document.createElement('div');
   pending.className = 'entry diary pending';
   pending.innerHTML = '<p class="ink"></p>';
   entriesEl.appendChild(pending);
-  scrollDown();
+  follow();
 
   // Let the user's ink sink for a moment before the diary answers.
   const minWait = new Promise((r) => setTimeout(r, 1600));
@@ -160,8 +211,7 @@ async function submit() {
   pending.replaceWith(entry);
   session.messages.push({ role: 'diary', text: answer, ts: Date.now() });
   await db.saveSession(session);
-  const grow = setInterval(scrollDown, 250);
-  setTimeout(() => clearInterval(grow), answer.length * CHAR_DELAY_MS + 900);
+  follow();
 
   // After the first exchange, the diary mocks the user in the table of contents.
   if (!session.title) {
@@ -175,10 +225,12 @@ async function submit() {
 
   busy = false;
   input.disabled = false;
-  if (current && current.id === session.id) input.focus();
+  if (current && current.id === session.id) input.focus({ preventScroll: true });
+  follow();
 }
 
 $('#entry-form').addEventListener('submit', (e) => { e.preventDefault(); submit(); });
+input.addEventListener('input', () => layout());
 input.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
 });
@@ -190,14 +242,13 @@ $('#delete-session').addEventListener('click', async () => {
   if (!confirm('Burn this entry? The diary will not remember it fondly, or at all.')) return;
   await db.deleteSession(current.id);
   current = null;
-  renderSession();
   await renderToc();
   setView('toc');
 });
 
 // ---------- Boot ----------
+registerPWA();
 (async function boot() {
   setView('toc');
-  sessionPage.classList.add('empty');
   await renderToc();
 })();

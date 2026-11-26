@@ -7,6 +7,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Homemade+Apple&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=IM+Fell+English:ital@0;1&family=Pinyon+Script&display=swap" rel="stylesheet">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#2a0d0d">
+<link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -23,26 +27,42 @@
 
     <!-- OPEN BOOK -->
     <div id="pages">
-      <!-- Left page: table of contents -->
-      <div class="page page-left" id="toc-page">
+      <!-- Left page: the inside cover (endpaper) while browsing the contents;
+           plain parchment while reading an entry -->
+      <div class="page page-left" id="left-page" aria-hidden="true">
+        <div class="bookplate"><span>Ex Libris</span><span class="bookplate-sub">nobody in particular</span></div>
+      </div>
+
+      <!-- Right page: table of contents -->
+      <div class="page page-right" id="toc-page">
         <h1 class="toc-heading">Contents</h1>
         <ol id="toc-list"></ol>
         <button id="new-session" type="button">Write a new entry…</button>
         <div id="engine-status" aria-live="polite"></div>
       </div>
 
-      <!-- Right page: the session -->
-      <div class="page page-right" id="session-page">
-        <header id="session-header">
-          <h2 id="session-title"></h2>
-          <time id="session-date"></time>
-        </header>
-        <div id="entries" aria-live="polite"></div>
-        <form id="entry-form" autocomplete="off">
-          <textarea id="entry-input" rows="2" placeholder="Write something…" aria-label="Write in the diary"></textarea>
-        </form>
-        <div id="page-empty">Choose an entry from the contents, or begin a new one.</div>
+      <!-- Entry view: text flows through CSS columns, one column per page.
+           An entry always begins on a right-hand page. -->
+      <div id="flow-view" hidden>
+        <div id="flow-viewport">
+          <div id="flow">
+            <div id="leaf-spacer" aria-hidden="true"></div>
+            <header id="session-header">
+              <h2 id="session-title"></h2>
+              <time id="session-date"></time>
+            </header>
+            <div id="entries" aria-live="polite"></div>
+            <form id="entry-form" autocomplete="off">
+              <textarea id="entry-input" rows="1" placeholder="Write something…" aria-label="Write in the diary"></textarea>
+            </form>
+          </div>
+        </div>
         <button id="back-to-toc" type="button" aria-label="Back to contents">⟵ Contents</button>
+        <nav id="spread-nav" aria-label="Turn pages">
+          <button id="prev-spread" type="button" aria-label="Previous pages">‹</button>
+          <span id="spread-label"></span>
+          <button id="next-spread" type="button" aria-label="Next pages">›</button>
+        </nav>
         <button id="delete-session" type="button" title="Burn this entry">Burn entry</button>
       </div>
     </div>
