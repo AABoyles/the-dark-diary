@@ -37,8 +37,14 @@
       <div class="page page-right" id="toc-page">
         <h1 class="toc-heading">Contents</h1>
         <ol id="toc-list"></ol>
+        <!-- The diary asks before it downloads a language model (issues #6, #25) -->
+        <section id="mind-slip" hidden aria-labelledby="mind-note">
+          <p id="mind-note"></p>
+          <div id="mind-options" role="group" aria-label="Choose the diary's mind"></div>
+        </section>
         <button id="new-session" type="button">Write a new entry…</button>
         <div id="engine-status" aria-live="polite"></div>
+        <button id="mind-control" type="button" hidden></button>
       </div>
 
       <!-- Entry view: text flows through CSS columns, one column per page.

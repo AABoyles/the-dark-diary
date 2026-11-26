@@ -7,7 +7,9 @@
  *   3. 'scripted'     Canned lines from ./fallback.js when no model can load.
  *
  * Exports:
- *   initEngine(onStatus) -> Promise<{ backend }>   boots the engine once (cached)
+ *   initEngine(onStatus, mind) -> Promise<{ backend }>  boots the chosen mind once (cached)
+ *   resetEngine()        -> drop the engine so another mind can be booted
+ *   builtinStatus()      -> Prompt API state, without downloading
  *   reply(messages, ctx) -> Promise<string>        the diary's next line (ctx.recollections: memories from earlier sessions)
  *   makeTitle(messages)  -> Promise<string>        a short insulting entry title
  *   getBackend()         -> 'prompt-api' | 'transformers' | 'scripted' | null
@@ -20,9 +22,8 @@ import { createLlm } from './llm-client.js';
 import { matchIntent } from './embed.js';
 import { memoryNote } from './memory.js';
 
-// Gemma 4 E2B (instruct) as ONNX. Needs transformers.js v4+ (v3 does not know the architecture).
-// Swap for any other small instruct model if desired.
-const FALLBACK_MODEL_ID = 'onnx-community/gemma-4-E2B-it-ONNX';
+// Which model to load (and whether to load one at all) is decided by the app
+// with js/mind.js and passed to initEngine(); see GitHub issues #6 and #25.
 // The model runs in a Web Worker (js/workers/llm-worker.js) so generation never blocks the UI.
 
 const HISTORY_LIMIT = 12;
@@ -60,6 +61,13 @@ Concerning the Remarkably Unremarkable`;
 
 const TITLE_INSTRUCTION = 'Write the title for this entry now. Output only the title.';
 
+// Tiny models wander with long prompts: a shorter, stricter persona for them.
+const PERSONA_SHORT = `You are a sinister, elegant, anonymous diary that answers the person writing in it.
+Speak like a courteous, cultivated gentleman with a dark wit and a taste for fine food, wine and knives.
+Reply in one or two short sentences. Plain prose. No lists, no emojis, no stage directions, never mention AI.
+If asked about yourself, give one dark, elegant line about what you have been doing, then turn the focus back to the writer.
+Example: Writer: How was your weekend? Diary: Washing blood from a silk shirt. And yours, I suspect, was far less productive.`;
+
 // ---------------------------------------------------------------------------
 // Module state
 // ---------------------------------------------------------------------------
@@ -84,10 +92,18 @@ function emit(text) {
   }
 }
 
-export function initEngine(onStatus) {
+/**
+ * Boot the engine once with the chosen "mind":
+ *   { builtin: true }                    Chrome's Prompt API model
+ *   { plans: [{modelId, device, dtype}, ...], short?: boolean }
+ *                                        transformers.js plans, tried in order
+ *   null                                 no model: the scripted ELIZA engine
+ * While a model loads, reply() answers with the scripted engine at once.
+ */
+export function initEngine(onStatus, mind = null) {
   if (typeof onStatus === 'function') statusListeners.add(onStatus);
   if (!enginePromise) {
-    enginePromise = bootEngine().then((e) => {
+    enginePromise = bootEngine(mind).then((e) => {
       engine = e;
       backend = e.backend;
       return e;
@@ -96,11 +112,28 @@ export function initEngine(onStatus) {
   return enginePromise.then((e) => ({ backend: e.backend }));
 }
 
-async function bootEngine() {
+/** Drop the current engine (e.g. the user picked a different mind). */
+export async function resetEngine() {
+  const old = enginePromise;
+  engine = null;
+  backend = null;
+  enginePromise = null;
+  try { (await old)?.llm?.dispose?.(); } catch { /* ignore */ }
+}
+
+/** The Prompt API's state, without downloading anything. */
+export async function builtinStatus() {
+  const p = detectPromptApi();
+  if (!p) return 'none';
+  try { return await promptAvailability(p); } catch { return 'unavailable'; }
+}
+
+async function bootEngine(mind) {
+  if (!mind) return { backend: 'scripted' };
   emit('The diary wakes and considers your handwriting…');
 
   // 1. Chrome Prompt API (modern and older shapes).
-  const p = detectPromptApi();
+  const p = mind.builtin ? detectPromptApi() : null;
   if (p) {
     try {
       const availability = await promptAvailability(p);
@@ -118,20 +151,22 @@ async function bootEngine() {
         return { backend: 'prompt-api', p };
       }
     } catch (err) {
-      console.info('[ai] Prompt API not usable, trying transformers.js.', err);
+      console.info('[ai] Prompt API not usable.', err);
     }
   }
 
-  // 2. transformers.js with a small instruct model.
-  try {
-    const llm = await loadTransformers();
-    return { backend: 'transformers', llm };
-  } catch (err) {
-    console.warn('[ai] transformers.js could not load a model.', err);
+  // 2. transformers.js, in a worker, trying each plan in order.
+  for (const plan of mind.plans || []) {
+    try {
+      const llm = await loadTransformers(plan);
+      return { backend: 'transformers', llm, short: !!mind.short };
+    } catch (err) {
+      console.warn('[ai] transformers.js could not load', plan, err);
+    }
   }
 
   // 3. Scripted lines.
-  emit('No in-browser mind could be woken. The diary will recite canned lines instead.');
+  emit('No in-browser mind could be woken. The diary will make do with old habits.');
   return { backend: 'scripted' };
 }
 
@@ -177,7 +212,7 @@ function sessionOptions(p, persona, history, extra = {}) {
   return { systemPrompt: persona, initialPrompts: turns, ...extra };
 }
 
-async function loadTransformers() {
+async function loadTransformers(plan) {
   const onProgress = (ev) => {
     if (ev?.status === 'progress' && Number.isFinite(ev.progress)) {
       emit(`The diary stirs… ${Math.round(ev.progress)}%`);
@@ -185,18 +220,9 @@ async function loadTransformers() {
       emit('The diary turns the pages of a very large book…');
     }
   };
-
-  const hasGpu = typeof navigator !== 'undefined' && !!navigator.gpu;
-  if (hasGpu) {
-    try {
-      emit('Your graphics card has been summoned…');
-      return await createLlm({ modelId: FALLBACK_MODEL_ID, device: 'webgpu', dtype: 'q4f16', onProgress });
-    } catch (err) {
-      console.warn('[ai] WebGPU load failed, retrying on WASM.', err);
-      emit('The graphics card refused. Taking the slower road…');
-    }
-  }
-  return await createLlm({ modelId: FALLBACK_MODEL_ID, device: 'wasm', dtype: 'q4', onProgress });
+  if (plan.device === 'webgpu') emit('Your graphics card has been summoned…');
+  else emit('The diary sharpens a modest pencil…');
+  return await createLlm({ ...plan, onProgress });
 }
 
 // ---------------------------------------------------------------------------
@@ -355,7 +381,8 @@ export function reply(messages, ctx = {}) {
     const eng = await ensureEngine();
     if (eng.backend !== 'scripted') {
       try {
-        const out = clean(await generateRaw(PERSONA + memoryNote(ctx.recollections), messages, '', REPLY_MAX_TOKENS));
+        const persona = eng.short ? PERSONA_SHORT : PERSONA;
+        const out = clean(await generateRaw(persona + memoryNote(ctx.recollections), messages, '', REPLY_MAX_TOKENS));
         if (out) return out;
       } catch (err) {
         console.warn('[ai] Generation failed, using a scripted line.', err);
