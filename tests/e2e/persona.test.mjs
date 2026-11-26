@@ -2,7 +2,7 @@
 // speaking first, and revised titles, end to end.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startServer, launch, newPage, openBook, newEntry, say, backToContents } from './helpers.mjs';
+import { startServer, launch, newPage, openBook, newEntry, say, backToContents, openEntry } from './helpers.mjs';
 
 let server;
 let browser;
@@ -119,7 +119,7 @@ test('a saved strike-through is redrawn when the entry is reopened', { timeout: 
   });
   await page.reload();
   await openBook(page);
-  await page.click('#toc-list li');
+  await openEntry(page);
   await page.waitForSelector('.entry.diary s.struck.lined');
   assert.equal(await page.locator('.entry.diary s.struck').textContent(), 'devour');
   assert.equal(await lastDiary(page), 'How lovely. I would devour enjoy the details.');

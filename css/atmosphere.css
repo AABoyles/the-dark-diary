@@ -1,0 +1,89 @@
+/* =========================================================================
+   THE DARK DIARY — atmosphere.css
+   Loaded after style.css; uses its tokens.
+
+   Contents
+   01. Candlelight vignette (issue #23)
+   02. Thinking state
+   03. Sound toggle (issue #21)
+   04. Reduced motion and print
+   ========================================================================= */
+
+
+/* -------------------------------------------------------------------------
+   01. Candlelight vignette
+   Multiply blend: the centre is white (no change), so the page keeps its
+   contrast. The warm pool sits upper-left; the darkening sits at the edges.
+   Flicker sets --candle-intensity, --candle-x and --candle-y from candle.js.
+   ------------------------------------------------------------------------- */
+
+#candle {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  background-color: #fff;
+  background-image:
+    radial-gradient(ellipse 55% 50% at 30% 22%, #fff4dc 0%, #ffe2ac 38%, rgba(255, 226, 172, 0) 100%),
+    radial-gradient(ellipse 75% 75% at 50% 50%, rgba(44, 22, 8, 0) 55%, rgba(44, 22, 8, 0.22) 85%, rgba(30, 15, 5, 0.42) 100%);
+  background-size: 120% 120%, 100% 100%;
+  background-repeat: no-repeat;
+  background-position:
+    calc(-10px + var(--candle-x, 0px)) calc(-10px + var(--candle-y, 0px)),
+    0 0;
+  opacity: calc(var(--candle-intensity, 1) * var(--candle-strength, 0.9));
+  transition:
+    opacity 180ms ease-out,
+    background-position 220ms ease-out;
+}
+
+
+/* -------------------------------------------------------------------------
+   02. Thinking state: a touch brighter (less edge darkening), set by setThinking(true)
+   ------------------------------------------------------------------------- */
+
+#candle.thinking {
+  --candle-strength: 0.7;
+}
+
+
+/* -------------------------------------------------------------------------
+   03. Sound toggle (issue #21): matches #mind-control
+   ------------------------------------------------------------------------- */
+
+#sound-toggle {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 0.15rem;
+  padding: 0;
+  background: none;
+  border: 0;
+  font-family: 'IM Fell English', Georgia, serif;
+  font-style: italic;
+  font-size: 0.68rem;
+  color: var(--ink-faded);
+  opacity: 0.75;
+  cursor: pointer;
+}
+#sound-toggle[hidden] { display: none; }
+#sound-toggle:hover,
+#sound-toggle:focus-visible { opacity: 1; color: var(--ink-diary); }
+#sound-toggle[aria-pressed="true"] { color: var(--ink-diary); opacity: 0.9; }
+
+
+/* -------------------------------------------------------------------------
+   04. Reduced motion and print
+   candle.js also renders a static vignette under reduced motion.
+   ------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  #candle,
+  #candle.thinking {
+    transition: none;
+  }
+}
+
+@media print {
+  #candle { display: none; }
+}

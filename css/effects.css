@@ -1,0 +1,29 @@
+/* effects.css - styles for the diary's small effects (issue #19). */
+
+/* The letters of a name, while they travel (see js/effects.js). */
+.anagram-ch {
+  display: inline-block;
+  transition: transform 0.9s ease-in-out;
+  will-change: transform;
+}
+
+/* A faint ink glow while the paragraph's letters are moving. */
+.anagram-moving .anagram-ch {
+  text-shadow: 0 0 6px rgba(40, 20, 60, 0.35);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .anagram-moving .anagram-ch {
+    text-shadow: 0 0 8px rgba(220, 200, 255, 0.35);
+  }
+}
+
+:root[data-theme="dark"] .anagram-moving .anagram-ch {
+  text-shadow: 0 0 8px rgba(220, 200, 255, 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anagram-ch {
+    transition: none;
+  }
+}

@@ -132,6 +132,19 @@ export async function newEntry(page) {
   await page.click('#new-session');
   await page.waitForSelector('#flow-view', { state: 'visible' });
   await page.waitForSelector('#entry-input:not([disabled])');
+  await pageTurned(page);
+}
+
+/** Waits until no page is mid-turn (js/pageturn.js overlays are gone). */
+export async function pageTurned(page) {
+  await page.waitForFunction(() => !document.querySelector('.page-turn'), null, { timeout: 10000 });
+}
+
+/** Opens the n-th entry (0-based) from the contents and waits for the page to turn. */
+export async function openEntry(page, n = 0) {
+  await page.locator('#toc-list li').nth(n).click();
+  await page.waitForSelector('#flow-view', { state: 'visible' });
+  await pageTurned(page);
 }
 
 /**
@@ -163,4 +176,5 @@ export async function backToContents(page) {
   await page.click('#back-to-toc');
   await page.waitForSelector('#flow-view', { state: 'hidden' });
   await page.waitForSelector('#toc-page', { state: 'visible' });
+  await pageTurned(page);
 }

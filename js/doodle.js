@@ -114,7 +114,7 @@ export function renderDoodle(container, paths) {
  * is on (the doodle stays on the page) and resolves to the list of path data
  * drawn, once the pen is at rest.
  */
-export function startDoodle(container) {
+export function startDoodle(container, { onStroke = null } = {}) {
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const svg = makeSvg(container);
   const drawn = [];
@@ -133,9 +133,11 @@ export function startDoodle(container) {
     if (reduce) return;
     const len = path.getTotalLength();
     path.style.strokeDasharray = len;
+    const duration = Math.max(700, (len / SPEED) * 1000);
+    try { onStroke?.(duration); } catch { /* sound is optional */ }
     const anim = path.animate(
       [{ strokeDashoffset: len }, { strokeDashoffset: 0 }],
-      { duration: Math.max(700, (len / SPEED) * 1000), easing: 'cubic-bezier(0.35, 0, 0.65, 1)', fill: 'both' }
+      { duration, easing: 'cubic-bezier(0.35, 0, 0.65, 1)', fill: 'both' }
     );
     await anim.finished.catch(() => {});
   }

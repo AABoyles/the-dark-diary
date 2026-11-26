@@ -8,6 +8,11 @@ import { InkWriter, renderInk } from './ink.js';
 import { timeContext } from './timesense.js';
 import { familiarity } from './familiarity.js';
 import { composeOverture } from './overture.js';
+import { turnPage, isTurning } from './pageturn.js';
+import { mountSoundToggle, scratch, strokeSound, rustle, coverCreak } from './sound.js';
+import { startCandle, setThinking } from './candle.js';
+import { matchEgg } from './eggs.js';
+import { playAnagram } from './effects.js';
 import { loadNlp } from './nlp.js';
 import { initEmbedder } from './embed.js';
 import { remember, recollect, backfill } from './memory.js';
@@ -42,6 +47,7 @@ function openBook() {
   if (!book.classList.contains('closed')) return;
   book.classList.remove('closed');
   book.classList.add('open');
+  coverCreak();
   startEngine();
 }
 $('#cover').addEventListener('click', openBook);
@@ -220,7 +226,13 @@ function layout({ follow = false } = {}) {
   const step = (flow.clientWidth + gap) / perSpread;
   const cols = Math.max(1, Math.round((flow.scrollWidth + gap) / step));
   spreads = Math.ceil(cols / perSpread);
-  spread = follow ? spreads - 1 : Math.min(spread, spreads - 1);
+  const target = follow ? spreads - 1 : Math.min(spread, spreads - 1);
+  if (busy && target > spread && !isTurning()) {
+    // the diary's writing ran onto the next spread: turn the page (issue #20)
+    turnSpread(() => { spread = target; layout(); }, 'forward');
+    return;
+  }
+  spread = target;
   flow.style.transform = `translateX(${-spread * perSpread * step}px)`;
   const first = spread * perSpread, last = Math.min(cols, first + perSpread) - 1;
   // desktop: column 0 is the blank spacer, so column n is page n
@@ -234,7 +246,17 @@ const follow = () => requestAnimationFrame(() => layout({ follow: true }));
 new ResizeObserver(() => layout()).observe(pagesEl);
 // Focus/selection can scroll the clipped viewport; keep it pinned.
 viewport.addEventListener('scroll', () => { viewport.scrollLeft = 0; });
-const turn = (d) => { spread = Math.max(0, Math.min(spreads - 1, spread + d)); layout(); };
+const turn = (d) => {
+  const next = Math.max(0, Math.min(spreads - 1, spread + d));
+  if (next === spread || isTurning()) return;
+  turnSpread(() => { spread = next; layout(); }, d > 0 ? 'forward' : 'back');
+};
+
+// Turn a leaf of the book while `change` updates the real DOM (issue #20).
+function turnSpread(change, dir) {
+  return turnPage({ book, pages: pagesEl, dir, single: perSpread === 1, change, onTurn: onPageTurn });
+}
+const onPageTurn = () => rustle();
 $('#prev-spread').addEventListener('click', () => turn(-1));
 $('#next-spread').addEventListener('click', () => turn(1));
 flowView.addEventListener('keydown', (e) => {
@@ -253,7 +275,7 @@ function makeEntry(role, text, { animate = false, doodle = null } = {}) {
     p.textContent = text;
     if (doodle) renderDoodle(div, doodle);
   } else if (animate) {
-    new InkWriter(p, { onProgress: follow }).finish(text);
+    new InkWriter(p, { onProgress: follow, onChar: scratch }).finish(text);
   } else {
     renderInk(p, text);
     p.classList.add('done');
@@ -278,17 +300,19 @@ function renderSession({ animateLast = false } = {}) {
 }
 
 async function selectSession(id) {
-  if (busy) return;
+  if (busy || isTurning()) return;
   current = (await db.getSession(id)) || null;
-  renderSession();
-  await renderToc();
-  setView('session');
-  follow();
+  await turnSpread(async () => {
+    renderSession();
+    await renderToc();
+    setView('session');
+    layout({ follow: true });
+  }, 'forward');
   if (current) input.focus({ preventScroll: true });
 }
 
 async function newSession() {
-  if (busy) return;
+  if (busy || isTurning()) return;
   // issue #14: sometimes the diary has already written something on the fresh page
   let overture = null;
   try {
@@ -301,10 +325,12 @@ async function newSession() {
     await db.saveSession(current);
     writeStore('dd-overture-at', Date.now());
   }
-  renderSession({ animateLast: !!overture });
-  await renderToc();
-  setView('session');
-  follow();
+  await turnSpread(async () => {
+    renderSession({ animateLast: !!overture }); // the diary's note writes itself as the page turns
+    await renderToc();
+    setView('session');
+    layout({ follow: true });
+  }, 'forward');
   input.focus({ preventScroll: true });
 }
 
@@ -347,7 +373,7 @@ async function submit() {
   // If the diary is slow to start answering (time to first text > 3 s), a pen
   // starts doodling in the margin of the user's message. Quick answers never see it.
   let pen = null;
-  const penTimer = setTimeout(() => { pen = startDoodle(userEntry); }, DOODLE_AFTER_MS);
+  const penTimer = setTimeout(() => { pen = startDoodle(userEntry, { onStroke: strokeSound }); }, DOODLE_AFTER_MS);
   const stopPen = () => {
     clearTimeout(penTimer);
     if (!pen) return;
@@ -362,9 +388,11 @@ async function submit() {
   // The reply's entry appears at the first streamed text (or when the whole
   // answer arrives) and writes itself at the diary's pace (issue #7).
   let writer = null;
+  setThinking(true); // the candle leans in while the diary composes
   const ensureWriter = () => {
     if (writer) return writer;
     stopPen();
+    setThinking(false);
     const div = document.createElement('div');
     div.className = 'entry diary';
     const p = document.createElement('p');
@@ -372,7 +400,7 @@ async function submit() {
     div.appendChild(p);
     entriesEl.appendChild(div);
     entriesEl.setAttribute('aria-busy', 'true'); // don't announce it letter by letter
-    writer = new InkWriter(p, { onProgress: follow });
+    writer = new InkWriter(p, { onProgress: follow, onChar: scratch });
     follow();
     return writer;
   };
@@ -384,8 +412,19 @@ async function submit() {
   const time = timeContext(new Date(), { lastMessageTs: prevTs });
   let level = 'acquaintance';
   try { level = familiarity(await db.listSessions()).level; } catch { /* default */ }
-  try { answer = await reply(session.messages, { recollections, time, familiarity: level }, { onText: (piece) => ensureWriter().append(piece) }); }
-  catch { answer = 'The diary declines to answer. How very like you to have asked.'; }
+  // issue #19: a few hidden phrases get special answers (never anything the crisis check would flag)
+  let egg = null;
+  try { egg = matchEgg(text, { history: session.messages.filter((m) => m.role === 'diary').map((m) => m.text) }); } catch { /* no egg */ }
+  if (egg) {
+    clearTimeout(penTimer);
+    if (egg.effect === 'anagram' && egg.data?.name) {
+      try { await playAnagram(userEntry.querySelector('.ink'), egg.data.name); } catch { /* the letters stay put */ }
+    }
+    answer = egg.reply;
+  } else {
+    try { answer = await reply(session.messages, { recollections, time, familiarity: level }, { onText: (piece) => ensureWriter().append(piece) }); }
+    catch { answer = 'The diary declines to answer. How very like you to have asked.'; }
+  }
 
   ensureWriter().finish(answer).then(() => entriesEl.setAttribute('aria-busy', 'false'));
   session.messages.push({ role: 'diary', text: answer, ts: Date.now() });
@@ -429,18 +468,25 @@ input.addEventListener('keydown', (e) => {
 });
 
 $('#new-session').addEventListener('click', newSession);
-$('#back-to-toc').addEventListener('click', () => setView('toc'));
+$('#back-to-toc').addEventListener('click', () => {
+  if (isTurning()) return;
+  turnSpread(() => setView('toc'), 'back');
+});
 $('#delete-session').addEventListener('click', async () => {
   if (!current || busy) return;
   if (!confirm('Burn this entry? The diary will not remember it fondly, or at all.')) return;
   await db.deleteSession(current.id);
   current = null;
-  await renderToc();
-  setView('toc');
+  await turnSpread(async () => {
+    await renderToc();
+    setView('toc');
+  }, 'back');
 });
 
 // ---------- Boot ----------
 registerPWA();
+startCandle();
+mountSoundToggle($('#sound-toggle'));
 // Small helpers load right away (compromise.js ~340 KB, MiniLM ~23 MB); the big model waits for the book to open.
 Promise.all([loadNlp(), initEmbedder(() => {})]).then(() => backfill()).catch(() => {});
 (async function boot() {

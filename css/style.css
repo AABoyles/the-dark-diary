@@ -965,7 +965,6 @@ body {
   column-width: var(--colw, 400px);
   column-gap: var(--gap, 60px);
   column-fill: auto;
-  transition: transform 0.55s var(--ease-soft);
   will-change: transform;
 }
 
@@ -1045,9 +1044,6 @@ body {
   #spread-nav { padding: 0 90px; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  #flow { transition: none; }
-}
 
 
 /* -------------------------------------------------------------------------
@@ -1182,6 +1178,36 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .ink s.struck::after, #toc-list s.toc-old::after { transition: none; }
   #toc-list .toc-current.fresh-ink { animation: none; }
+}
+
+
+/* -------------------------------------------------------------------------
+   13e. Page turns (issue #20; see js/pageturn.js)
+   ------------------------------------------------------------------------- */
+
+.page-turn {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  perspective: 2400px;
+  pointer-events: auto;     /* no clicks land mid-turn */
+}
+.page-turn-leaf,
+.page-turn-face,
+.page-turn-host,
+.page-turn-shade {
+  position: absolute;
+  inset: 0;
+}
+.page-turn-leaf { transform-style: preserve-3d; }
+.page-turn-leaf > .page-turn-face {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.page-turn-shade {
+  opacity: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(20, 8, 2, 0.45), transparent 35%, transparent 65%, rgba(20, 8, 2, 0.45));
 }
 
 

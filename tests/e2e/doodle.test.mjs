@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startServer, launch, newPage, openBook, newEntry, say } from './helpers.mjs';
+import { startServer, launch, newPage, openBook, newEntry, say, openEntry } from './helpers.mjs';
 
 let server;
 let browser;
@@ -86,8 +86,7 @@ test('a slow diary makes the pen doodle beside the last message, and the doodle 
   // After a reload, reopening the entry from the contents redraws the same doodle.
   await page.reload();
   await openBook(page);
-  await page.click('#toc-list li');
-  await page.waitForSelector('#flow-view', { state: 'visible' });
+  await openEntry(page);
   assert.equal(await pathCount(page), drawn, 'the same number of paths after reopening');
 
   assert.equal(page.errors.length, 0, `page errors: ${page.errors.join('; ')}`);
