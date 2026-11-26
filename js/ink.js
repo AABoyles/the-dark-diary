@@ -183,10 +183,11 @@ export function renderInk(p, text, { seed, blotIn = false } = {}) {
 }
 
 export class InkWriter {
-  constructor(p, { charDelay = CHAR_DELAY_MS, onProgress = null, seed = null } = {}) {
+  constructor(p, { charDelay = CHAR_DELAY_MS, onProgress = null, onChar = null, seed = null } = {}) {
     this.p = p;
     this.charDelay = charDelay;
     this.onProgress = onProgress;
+    this.onChar = onChar;   // e.g. a quill-scratch sound per letter (issue #21)
     this.seed = seed ?? randomSeed(); // the hand: the same seed is used for the final render
     this.hand = createHand(this.seed);
     this.queue = [];        // characters waiting to be written
@@ -268,6 +269,9 @@ export class InkWriter {
     const s = placeChar(this.hand, this.target, ch);
     if (s) s.style.setProperty('--i', 0); // each character animates in as it is placed
     this.written += ch;
+    if (this.onChar && ch !== ' ') {
+      try { this.onChar(ch); } catch { /* ignore */ }
+    }
     if (this.onProgress && (ch === ' ' || this.written.length % 12 === 0)) {
       try { this.onProgress(); } catch { /* ignore */ }
     }

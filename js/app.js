@@ -275,7 +275,7 @@ function makeEntry(role, text, { animate = false, doodle = null } = {}) {
     p.textContent = text;
     if (doodle) renderDoodle(div, doodle);
   } else if (animate) {
-    new InkWriter(p, { onProgress: follow }).finish(text);
+    new InkWriter(p, { onProgress: follow, onChar: scratch }).finish(text);
   } else {
     renderInk(p, text);
     p.classList.add('done');
@@ -326,16 +326,11 @@ async function newSession() {
     writeStore('dd-overture-at', Date.now());
   }
   await turnSpread(async () => {
-    renderSession();
+    renderSession({ animateLast: !!overture }); // the diary's note writes itself as the page turns
     await renderToc();
     setView('session');
     layout({ follow: true });
   }, 'forward');
-  if (overture) {
-    // the diary's note writes itself once the page has turned
-    const last = entriesEl.querySelector('.entry.diary:last-child .ink');
-    if (last) new InkWriter(last, { onProgress: follow }).finish(overture.text);
-  }
   input.focus({ preventScroll: true });
 }
 
@@ -405,7 +400,7 @@ async function submit() {
     div.appendChild(p);
     entriesEl.appendChild(div);
     entriesEl.setAttribute('aria-busy', 'true'); // don't announce it letter by letter
-    writer = new InkWriter(p, { onProgress: follow });
+    writer = new InkWriter(p, { onProgress: follow, onChar: scratch });
     follow();
     return writer;
   };

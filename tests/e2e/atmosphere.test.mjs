@@ -118,15 +118,11 @@ test('under reduced motion the candle is static', async () => {
 });
 
 test('the sound toggle turns sound on and the synthesized sounds play without throwing', async () => {
-  const page = await newPage(browser);
+  // the app mounts the real toggle on the contents page (js/app.js)
+  const page = await newPage(browser, { mindChoice: 'none' });
   await openWithAtmosphere(page);
-  await page.evaluate(async () => {
-    const button = document.createElement('button');
-    button.id = 'sound-toggle';
-    document.body.appendChild(button);
-    const m = await import('/js/sound.js');
-    m.mountSoundToggle(button);
-  });
+  await page.click('#cover');
+  await page.waitForSelector('#sound-toggle', { state: 'visible' });
 
   assert.equal(await page.getAttribute('#sound-toggle', 'aria-pressed'), 'false');
   await page.click('#sound-toggle'); // a real user gesture, so the AudioContext may start
