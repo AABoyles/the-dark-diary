@@ -11,6 +11,8 @@ import { composeOverture } from './overture.js';
 import { turnPage, isTurning } from './pageturn.js';
 import { mountSoundToggle, scratch, strokeSound, rustle, coverCreak } from './sound.js';
 import { startCandle, setThinking } from './candle.js';
+import { matchEgg } from './eggs.js';
+import { playAnagram } from './effects.js';
 import { loadNlp } from './nlp.js';
 import { initEmbedder } from './embed.js';
 import { remember, recollect, backfill } from './memory.js';
@@ -415,8 +417,19 @@ async function submit() {
   const time = timeContext(new Date(), { lastMessageTs: prevTs });
   let level = 'acquaintance';
   try { level = familiarity(await db.listSessions()).level; } catch { /* default */ }
-  try { answer = await reply(session.messages, { recollections, time, familiarity: level }, { onText: (piece) => ensureWriter().append(piece) }); }
-  catch { answer = 'The diary declines to answer. How very like you to have asked.'; }
+  // issue #19: a few hidden phrases get special answers (never anything the crisis check would flag)
+  let egg = null;
+  try { egg = matchEgg(text, { history: session.messages.filter((m) => m.role === 'diary').map((m) => m.text) }); } catch { /* no egg */ }
+  if (egg) {
+    clearTimeout(penTimer);
+    if (egg.effect === 'anagram' && egg.data?.name) {
+      try { await playAnagram(userEntry.querySelector('.ink'), egg.data.name); } catch { /* the letters stay put */ }
+    }
+    answer = egg.reply;
+  } else {
+    try { answer = await reply(session.messages, { recollections, time, familiarity: level }, { onText: (piece) => ensureWriter().append(piece) }); }
+    catch { answer = 'The diary declines to answer. How very like you to have asked.'; }
+  }
 
   ensureWriter().finish(answer).then(() => entriesEl.setAttribute('aria-busy', 'false'));
   session.messages.push({ role: 'diary', text: answer, ts: Date.now() });
