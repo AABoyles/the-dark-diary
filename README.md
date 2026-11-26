@@ -17,3 +17,14 @@ A leather-bound diary that answers back. Static site, no backend: all AI runs in
 ## Deploy
 
 `.github/workflows/pages.yml` publishes to GitHub Pages on every push to `main`. One-time setup: repo **Settings → Pages → Source: GitHub Actions**. All URLs are relative, so it works under `/the-dark-diary/`. Bump `VERSION` in `sw.js` when shipping changed files, so clients refresh their cached shell.
+
+## Testing
+
+```sh
+npm install          # dev-only: compromise (for NLP tests) and Playwright
+npm test             # unit tests (node:test), ~1 s
+npx playwright install chromium   # once
+npm run test:e2e     # browser end-to-end tests against a local static server, ~1 min
+```
+
+Unit tests live in `tests/unit/`; end-to-end tests in `tests/e2e/` run offline (CDN and Hugging Face requests are blocked, so the app runs on its scripted engine; model streaming is tested with a stand-in client). Both run in CI on every pull request (`.github/workflows/test.yml`). The site itself still has no build step and no runtime dependencies.
