@@ -789,39 +789,10 @@ body {
    11. Empty state & utility controls
    ------------------------------------------------------------------------- */
 
-#page-empty {
-  display: none;
-  flex: 1 1 auto;
-  align-items: center;
-  justify-content: center;
-  max-width: 22em;
-  margin: auto;
-  padding: 2rem 1rem;
-  text-align: center;
-  font-family: 'IM Fell English', Georgia, serif;
-  font-style: italic;
-  font-size: clamp(1rem, 1.5vw, 1.15rem);
-  line-height: 1.6;
-  color: var(--ink-faded);
-}
-
-/* JS adds .empty to #session-page when there is no entry open */
-#session-page.empty #page-empty {
-  display: flex;
-}
-
-#session-page.empty #session-header,
-#session-page.empty #entries,
-#session-page.empty #entry-form,
-#session-page.empty #delete-session {
-  display: none;
-}
-
-/* Back to contents: only shown on narrow screens (see section 13) */
+/* Back to contents (bottom-left margin of the entry view) */
 #back-to-toc {
-  display: none;
   position: absolute;
-  top: 12px;
+  bottom: 6px;
   left: 14px;
   z-index: 4;
   padding: 0.3rem 0.4rem;
@@ -927,9 +898,8 @@ body {
     display: none;
   }
 
-  /* One page at a time; JS sets data-view on #book (default: contents) */
-  #book:not([data-view="session"]) #session-page,
-  #book[data-view="session"] #toc-page {
+  /* One page at a time: the endpaper is dropped on small screens */
+  #left-page {
     display: none;
   }
 
@@ -943,18 +913,161 @@ body {
     box-shadow: inset 0 0 30px rgba(80, 50, 15, 0.25);
   }
 
-  #back-to-toc {
-    display: inline-block;
-  }
+}
 
-  #session-header {
-    padding-top: 26px;   /* clears the back button */
-  }
 
-  #delete-session {
-    right: 10px;
-    bottom: 4px;
-  }
+/* -------------------------------------------------------------------------
+   13b. Paginated spreads: endpaper, entry flow, page-turn controls
+   The entry is one long multi-column flow; JS sets --pad, --colw, --gap and
+   slides #flow by whole spreads. Column 0 is the blank left page, so every
+   entry opens on a right-hand page.
+   ------------------------------------------------------------------------- */
+
+/* Inside cover (endpaper) shown opposite the table of contents */
+#book[data-view="toc"] #left-page {
+  color: var(--gold-mid);
+  background:
+    radial-gradient(ellipse at 30% 25%, rgba(201, 162, 79, 0.14), transparent 45%),
+    radial-gradient(ellipse at 72% 70%, rgba(150, 40, 50, 0.30), transparent 55%),
+    repeating-radial-gradient(circle at 20% 40%, rgba(255, 255, 255, 0.025) 0 2px, transparent 2px 9px),
+    repeating-linear-gradient(115deg, rgba(0, 0, 0, 0.28) 0 3px, transparent 3px 11px),
+    linear-gradient(160deg, #3b1118 0%, #1c0509 55%, #0e0205 100%);
+  box-shadow:
+    inset -36px 0 48px -30px rgba(0, 0, 0, 0.75),
+    inset 0 0 50px rgba(0, 0, 0, 0.55);
+}
+
+.bookplate {
+  display: none;
+  margin: auto auto 12%;
+  padding: 0.9rem 1.4rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  text-align: center;
+  font-family: 'IM Fell English', Georgia, serif;
+  font-variant: small-caps;
+  letter-spacing: 0.18em;
+  font-size: 0.95rem;
+  color: #4a3320;
+  background: linear-gradient(168deg, var(--parchment-hi), var(--parchment-lo));
+  border: 1px solid rgba(60, 36, 14, 0.55);
+  outline: 1px solid rgba(60, 36, 14, 0.35);
+  outline-offset: -5px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  transform: rotate(-1.2deg);
+}
+.bookplate-sub { font-style: italic; font-variant: normal; letter-spacing: 0.06em; font-size: 0.72rem; opacity: 0.8; }
+#book[data-view="toc"] .bookplate { display: flex; }
+
+/* While reading an entry, the contents page gives way to the flow */
+#book[data-view="session"] #toc-page > * { visibility: hidden; }
+#book[data-view="toc"] #flow-view { display: none; }
+
+#flow-view {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+#flow-view[hidden] { display: none; }
+
+#flow-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  padding: var(--pad, 32px);
+  padding-bottom: calc(var(--pad, 32px) + 14px);
+  /* ruled lines run edge to edge across both pages */
+  background-image: linear-gradient(to bottom, transparent calc(var(--line) - 1px), var(--ruling) calc(var(--line) - 1px), var(--ruling) var(--line));
+  background-size: 100% var(--line);
+  background-position: 0 var(--pad, 32px);
+}
+
+#flow {
+  height: 100%;
+  column-width: var(--colw, 400px);
+  column-gap: var(--gap, 60px);
+  column-fill: auto;
+  transition: transform 0.55s var(--ease-soft);
+  will-change: transform;
+}
+
+#leaf-spacer {
+  height: 1px;
+  break-after: column;
+}
+
+#flow #session-header {
+  height: calc(var(--line) * 2);
+  margin: 0 0 var(--line);
+  padding: 0;
+  border: 0;
+  break-inside: avoid;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+#flow #entries {
+  overflow: visible;
+  background: none;
+  flex: none;
+}
+
+#flow #entry-form {
+  margin: 0;
+  padding: 0;
+  break-inside: avoid;
+}
+
+#flow #entry-input {
+  field-sizing: content;
+  min-height: calc(var(--line) * 2);
+  max-height: calc(var(--line) * 4);
+  line-height: var(--line);
+  border-bottom: 0;
+}
+
+/* page-turn controls live in the bottom margin */
+#spread-nav {
+  position: absolute;
+  bottom: 4px;
+  left: 0;
+  right: 0;
+  padding: 0 clamp(90px, 9vw, 120px);
+  pointer-events: none;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: 'IM Fell English', Georgia, serif;
+  font-style: italic;
+  font-size: 0.8rem;
+  color: var(--ink-faded);
+}
+#spread-nav button {
+  pointer-events: auto;
+  background: none;
+  border: 0;
+  padding: 0 0.5rem;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--ink-user);
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 0.3s;
+}
+#spread-nav button:hover:not(:disabled),
+#spread-nav button:focus-visible { opacity: 1; }
+#spread-nav button:disabled { opacity: 0.15; cursor: default; }
+
+@media (max-width: 759.98px) {
+  #leaf-spacer { display: none; }
+  #spread-nav { padding: 0 90px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #flow { transition: none; }
 }
 
 

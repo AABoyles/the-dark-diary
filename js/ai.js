@@ -17,10 +17,10 @@
 
 import { scriptedReply, scriptedTitle } from './fallback.js';
 
-// Swap this for a Gemma E2B ONNX build (or any small instruct model) when available.
-// The default is a Gemma-3 1B instruct model that transformers.js can run in the browser.
-const FALLBACK_MODEL_ID = 'onnx-community/gemma-3-1b-it-ONNX';
-const TRANSFORMERS_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.0';
+// Gemma 4 E2B (instruct) as ONNX. Needs transformers.js v4+ (v3 does not know the architecture).
+// Swap for any other small instruct model if desired.
+const FALLBACK_MODEL_ID = 'onnx-community/gemma-4-E2B-it-ONNX';
+const TRANSFORMERS_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2';
 
 const HISTORY_LIMIT = 12;
 const REPLY_MAX_TOKENS = 90;
@@ -175,7 +175,7 @@ function sessionOptions(p, persona, history, extra = {}) {
 }
 
 async function loadTransformers() {
-  const { pipeline } = await import(TRANSFORMERS_URL);
+  const tj = await import(TRANSFORMERS_URL);
   const progress_callback = (ev) => {
     if (ev?.status === 'progress' && Number.isFinite(ev.progress)) {
       emit(`The diary stirs… ${Math.round(ev.progress)}%`);
@@ -184,25 +184,36 @@ async function loadTransformers() {
     }
   };
 
+  // Preferred: the standard text-generation pipeline.
+  // Fallback: drive the multimodal Gemma 4 class directly with text-only input.
+  const load = async (opts) => {
+    try {
+      return await tj.pipeline('text-generation', FALLBACK_MODEL_ID, { ...opts, progress_callback });
+    } catch (err) {
+      console.warn('[ai] pipeline load failed, trying Gemma4ForConditionalGeneration.', err);
+      const tokenizer = await tj.AutoTokenizer.from_pretrained(FALLBACK_MODEL_ID, { progress_callback });
+      const model = await tj.Gemma4ForConditionalGeneration.from_pretrained(FALLBACK_MODEL_ID, { ...opts, progress_callback });
+      return async (chat, gen) => {
+        const inputs = tokenizer.apply_chat_template(chat, { add_generation_prompt: true, return_dict: true });
+        const out = await model.generate({ ...inputs, ...gen });
+        const start = inputs.input_ids.dims.at(-1);
+        const [text] = tokenizer.batch_decode(out.slice(null, [start, null]), { skip_special_tokens: true });
+        return [{ generated_text: [...chat, { role: 'assistant', content: text }] }];
+      };
+    }
+  };
+
   const hasGpu = typeof navigator !== 'undefined' && !!navigator.gpu;
   if (hasGpu) {
     try {
       emit('Your graphics card has been summoned…');
-      return await pipeline('text-generation', FALLBACK_MODEL_ID, {
-        device: 'webgpu',
-        dtype: 'q4f16',
-        progress_callback,
-      });
+      return await load({ device: 'webgpu', dtype: 'q4f16' });
     } catch (err) {
       console.warn('[ai] WebGPU load failed, retrying on WASM.', err);
       emit('The graphics card refused. Taking the slower road…');
     }
   }
-  return await pipeline('text-generation', FALLBACK_MODEL_ID, {
-    device: 'wasm',
-    dtype: 'q4',
-    progress_callback,
-  });
+  return await load({ device: 'wasm', dtype: 'q4' });
 }
 
 // ---------------------------------------------------------------------------
