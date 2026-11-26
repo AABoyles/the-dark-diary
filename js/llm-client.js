@@ -6,6 +6,8 @@
  *
  *   const llm = await createLlm({ modelId, device: 'webgpu' | 'wasm', dtype, onProgress });
  *   const text = await llm.generate(chat, { max_new_tokens: 90, do_sample: true });
+ *   // streaming (issue #7): onToken receives each new piece of text as it is produced
+ *   const text = await llm.generate(chat, options, { onToken: (piece) => ... });
  *   llm.dispose();
  *
  * `chat` is an array of { role, content }. `generate` resolves with the content
@@ -17,7 +19,7 @@
 
 export async function createLlm({ modelId, device = 'wasm', dtype, onProgress } = {}) {
   const worker = new Worker(new URL('./workers/llm-worker.js', import.meta.url), { type: 'module' });
-  const pending = new Map(); // id -> { resolve, reject }
+  const pending = new Map(); // id -> { resolve, reject, onToken? }
   let nextId = 1;
   let closed = false;
 
@@ -41,6 +43,10 @@ export async function createLlm({ modelId, device = 'wasm', dtype, onProgress } 
     }
     const slot = pending.get(msg.id);
     if (!slot) return;
+    if (msg.type === 'token') {
+      try { slot.onToken?.(String(msg.text ?? '')); } catch { /* a token listener must never break the worker */ }
+      return;
+    }
     pending.delete(msg.id);
     if (msg.type === 'error') slot.reject(new Error(msg.message || 'LLM worker error.'));
     else slot.resolve(msg);
@@ -51,13 +57,13 @@ export async function createLlm({ modelId, device = 'wasm', dtype, onProgress } 
     close(message);
   };
 
-  const send = (payload) => new Promise((resolve, reject) => {
+  const send = (payload, onToken) => new Promise((resolve, reject) => {
     if (closed) {
       reject(new Error('LLM client is disposed.'));
       return;
     }
     const id = nextId++;
-    pending.set(id, { resolve, reject });
+    pending.set(id, { resolve, reject, onToken });
     worker.postMessage({ ...payload, id });
   });
 
@@ -69,8 +75,10 @@ export async function createLlm({ modelId, device = 'wasm', dtype, onProgress } 
   }
 
   return {
-    generate(chat, options = {}) {
-      return send({ type: 'generate', chat, options }).then((msg) => String(msg.text ?? ''));
+    generate(chat, options = {}, { onToken } = {}) {
+      const stream = typeof onToken === 'function';
+      return send({ type: 'generate', chat, options, stream }, stream ? onToken : undefined)
+        .then((msg) => String(msg.text ?? ''));
     },
     dispose() {
       close('LLM client was disposed.');

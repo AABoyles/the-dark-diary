@@ -4,6 +4,7 @@ import { initEngine, resetEngine, builtinStatus, reply, makeTitle } from './ai.j
 import * as mind from './mind.js';
 import { registerPWA } from './pwa.js';
 import { startDoodle, renderDoodle } from './doodle.js';
+import { InkWriter } from './ink.js';
 import { loadNlp } from './nlp.js';
 import { initEmbedder } from './embed.js';
 import { remember, recollect, backfill } from './memory.js';
@@ -18,7 +19,6 @@ const viewport = $('#flow-viewport');
 const flow = $('#flow');
 const pagesEl = $('#pages');
 
-const CHAR_DELAY_MS = 38; // must match css/style.css (--i * 38ms)
 const DOODLE_AFTER_MS = 3000; // the pen only starts if the diary takes longer than this to answer
 const UNTITLED = 'An Entry Not Yet Mocked';
 
@@ -233,7 +233,7 @@ function makeEntry(role, text, { animate = false, doodle = null } = {}) {
     p.textContent = text;
     if (doodle) renderDoodle(div, doodle);
   } else if (animate) {
-    writeInk(p, text);
+    new InkWriter(p, { onProgress: follow }).finish(text);
   } else {
     p.textContent = text;
     p.classList.add('done');
@@ -241,21 +241,6 @@ function makeEntry(role, text, { animate = false, doodle = null } = {}) {
   return div;
 }
 
-// Render text as per-character spans so the reply "writes itself".
-function writeInk(p, text) {
-  p.textContent = '';
-  p.classList.add('writing');
-  [...text].forEach((ch, i) => {
-    const s = document.createElement('span');
-    s.className = 'ch';
-    s.style.setProperty('--i', i);
-    s.textContent = ch;
-    p.appendChild(s);
-  });
-  const total = [...text].length * CHAR_DELAY_MS + 800;
-  setTimeout(() => { p.textContent = text; p.classList.remove('writing'); p.classList.add('done'); }, total);
-  return total;
-}
 
 
 function renderSession() {
@@ -308,24 +293,46 @@ async function submit() {
   remember(session.id, text).catch(() => {}); // learn from it for later entries
   follow();
 
-  // If the diary is slow to answer, a pen starts doodling in the margin of the
-  // user's message. Quick answers never see it.
+  // If the diary is slow to start answering (time to first text > 3 s), a pen
+  // starts doodling in the margin of the user's message. Quick answers never see it.
   let pen = null;
   const penTimer = setTimeout(() => { pen = startDoodle(userEntry); }, DOODLE_AFTER_MS);
+  const stopPen = () => {
+    clearTimeout(penTimer);
+    if (!pen) return;
+    const p = pen;
+    pen = null;
+    // the pen finishes its current stroke; the doodle stays on the page and is saved
+    p.stop().then((paths) => {
+      if (paths.length) { userMsg.doodle = paths; return db.saveSession(session); }
+    }).catch(() => {});
+  };
+
+  // The reply's entry appears at the first streamed text (or when the whole
+  // answer arrives) and writes itself at the diary's pace (issue #7).
+  let writer = null;
+  const ensureWriter = () => {
+    if (writer) return writer;
+    stopPen();
+    const div = document.createElement('div');
+    div.className = 'entry diary';
+    const p = document.createElement('p');
+    p.className = 'ink';
+    div.appendChild(p);
+    entriesEl.appendChild(div);
+    entriesEl.setAttribute('aria-busy', 'true'); // don't announce it letter by letter
+    writer = new InkWriter(p, { onProgress: follow });
+    follow();
+    return writer;
+  };
+
   let answer;
   let recollections = [];
   try { recollections = await recollect(session.id, text); } catch { /* memory is optional */ }
-  try { answer = await reply(session.messages, { recollections }); }
+  try { answer = await reply(session.messages, { recollections }, { onText: (piece) => ensureWriter().append(piece) }); }
   catch { answer = 'The diary declines to answer. How very like you to have asked.'; }
 
-  clearTimeout(penTimer);
-  if (pen) {
-    // the pen finishes its current stroke; the doodle stays on the page and is saved
-    pen.stop().then((paths) => {
-      if (paths.length) { userMsg.doodle = paths; return db.saveSession(session); }
-    }).catch(() => {});
-  }
-  entriesEl.appendChild(makeEntry('diary', answer, { animate: true }));
+  ensureWriter().finish(answer).then(() => entriesEl.setAttribute('aria-busy', 'false'));
   session.messages.push({ role: 'diary', text: answer, ts: Date.now() });
   await db.saveSession(session);
   follow();
