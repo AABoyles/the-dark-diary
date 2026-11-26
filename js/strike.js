@@ -44,6 +44,7 @@ export const STRIKE_PAIRS = Object.freeze({
   warm: 'flushed',
   sleep: 'lie in state',
   door: 'trapdoor',
+  'come back': 'return for seconds',
 });
 
 // One complete "~~x~~" pair, with the optional space that follows it.
@@ -106,7 +107,7 @@ export function limitStrikes(text, max = 1) {
   const keep = Number.isFinite(max) ? Math.max(0, Math.floor(max)) : 1;
   let seen = 0;
   return toText(text).replace(PAIR_OR_STRAY, (match) => {
-    if (!match.includes('~~') || !/~~[^~]+?~~/.test(match)) return '';
+    if (match === '~~') return '';   // a stray marker
     seen += 1;
     return seen <= keep ? match : '';
   });
@@ -135,11 +136,7 @@ export function parseStrikes(text) {
   for (const match of src.matchAll(PAIR_ONLY)) {
     push(src.slice(cursor, match.index).replace(/~~/g, ''), false);
     const struck = match[1];
-    if (struck.trim()) {
-      push(struck, true);
-    } else {
-      push(struck, false);
-    }
+    push(struck, struck.trim() !== '');
     cursor = match.index + match[0].length;
   }
   push(src.slice(cursor).replace(/~~/g, ''), false);
