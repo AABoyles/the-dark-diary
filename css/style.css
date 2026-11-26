@@ -1,0 +1,1008 @@
+/* =========================================================================
+   THE DARK DIARY — style.css
+   Vanilla CSS. Styles the exact DOM in index.html (no structural changes).
+
+   Contents
+   01. Design tokens (:root)
+   02. Base & the desk
+   03. Book shell & closed cover
+   04. Open book, leather frame & gutter
+   05. Parchment pages (shared)
+   06. Table of contents (left page)
+   07. Session page (right page)
+   08. Entries & ink
+   09. Ink effects (absorb, writing, pending)
+   10. Entry form (handwriting input)
+   11. Empty state & utility controls
+   12. Opening motion
+   13. Responsive: single page under 760px
+   14. Reduced motion
+   ========================================================================= */
+
+
+/* -------------------------------------------------------------------------
+   01. Design tokens
+   ------------------------------------------------------------------------- */
+
+:root {
+  /* desk */
+  --desk-hi: #0b0706;
+  --desk-lo: #030202;
+
+  /* leather (cover + board) */
+  --leather-hi: #5a1a20;
+  --leather-mid: #2c0b10;
+  --leather-lo: #140306;
+  --leather: /* grain */
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(-30deg, rgba(0, 0, 0, 0.14) 0 1px, transparent 1px 5px),
+    repeating-radial-gradient(circle at 17% 32%, rgba(255, 235, 220, 0.025) 0 1px, transparent 1px 6px),
+    /* oxblood wear */
+    radial-gradient(ellipse 70% 60% at 28% 18%, rgba(160, 40, 48, 0.32), transparent 70%),
+    radial-gradient(ellipse 60% 55% at 82% 88%, rgba(0, 0, 0, 0.65), transparent 70%),
+    linear-gradient(160deg, var(--leather-hi) 0%, var(--leather-mid) 42%, var(--leather-lo) 78%, #241015 100%);
+
+  /* gold foil & stitching */
+  --gold-hi: #f6e2a4;
+  --gold-mid: #c69b45;
+  --gold-lo: #6f4a15;
+  --stitch: rgba(201, 162, 79, 0.38);
+
+  /* parchment */
+  --parchment-hi: #f4e8c9;
+  --parchment-mid: #e7d5a9;
+  --parchment-lo: #cdb07c;
+  --page-ink: #2a1d10;
+  --ink-faded: rgba(42, 29, 16, 0.5);
+  --ruling: rgba(96, 62, 30, 0.2);
+
+  /* inks */
+  --ink-user: #1d2333;
+  --ink-diary: #3a0d0d;
+
+  /* rhythm */
+  --line: 34px;
+  --gutter: 14px;
+  --book-w: min(1100px, 96vw, 144vh);
+
+  /* motion */
+  --ease-swing: cubic-bezier(0.65, 0.05, 0.25, 1);
+  --ease-soft: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+
+/* -------------------------------------------------------------------------
+   02. Base & the desk
+   ------------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--desk-lo);
+}
+
+body {
+  font-family: 'IM Fell English', Georgia, serif;
+  color: var(--page-ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* The desk: near-black, a faint lamplight pool, wood grain, heavy vignette */
+#desk {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 55% 45% at 50% 42%, rgba(120, 70, 40, 0.14), transparent 70%),
+    radial-gradient(ellipse at center, transparent 35%, rgba(0, 0, 0, 0.9) 100%),
+    repeating-linear-gradient(92deg,
+      rgba(255, 210, 160, 0.018) 0 2px,
+      transparent 2px 9px,
+      rgba(0, 0, 0, 0.25) 9px 10px,
+      transparent 10px 27px),
+    repeating-linear-gradient(88deg, rgba(0, 0, 0, 0.35) 0 1px, transparent 1px 41px),
+    linear-gradient(180deg, var(--desk-hi), var(--desk-lo));
+}
+
+
+/* -------------------------------------------------------------------------
+   03. Book shell & closed cover
+   ------------------------------------------------------------------------- */
+
+/* The board. Centered, 16:10, capped to the viewport height. */
+#book {
+  position: relative;
+  isolation: isolate;
+  flex: none;
+  width: var(--book-w);
+  max-width: 96vw;
+  max-height: 90vh;
+  aspect-ratio: 16 / 10;
+  perspective: 2200px;
+  border-radius: 6px;
+  background: var(--leather);
+  box-shadow:
+    0 2px 0 #0d0203,
+    0 18px 30px -8px rgba(0, 0, 0, 0.8),
+    0 40px 80px -12px rgba(0, 0, 0, 0.85);
+  transition: transform 0.5s var(--ease-soft), box-shadow 0.5s var(--ease-soft);
+}
+
+/* Closed: the cover is the whole book, with a thin block of page edges */
+#book.closed {
+  cursor: pointer;
+}
+
+#book.closed::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  right: -10px;
+  width: 14px;
+  z-index: -1;
+  border-radius: 0 4px 4px 0;
+  background: repeating-linear-gradient(0deg, #e9d7ac 0 1px, #b99d68 1px 2px);
+  box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.6);
+}
+
+/* Gentle hover lift on the closed book */
+#book.closed:hover {
+  transform: translateY(-6px);
+  box-shadow:
+    0 2px 0 #0d0203,
+    0 26px 36px -8px rgba(0, 0, 0, 0.85),
+    0 56px 96px -10px rgba(0, 0, 0, 0.9);
+}
+
+/* The cover: aged leather, stitched inset border, worn edges */
+#cover {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: inherit;
+  background: var(--leather);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.6),
+    inset 0 0 60px rgba(0, 0, 0, 0.75),
+    inset 2px 0 0 rgba(255, 255, 255, 0.05);
+  transform-origin: left center;   /* hinge on the left edge */
+  backface-visibility: hidden;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+  transition: transform 0.9s var(--ease-swing), visibility 0s linear 0s;
+}
+
+/* Stitching: a dashed inset border */
+#cover::before {
+  content: "";
+  position: absolute;
+  inset: 16px;
+  border: 1.5px dashed var(--stitch);
+  border-radius: 4px;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+/* Worn edges: lighter rubbed corners and darkened spine edge */
+#cover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(214, 150, 120, 0.16), transparent 14%),
+    radial-gradient(circle at 100% 0%, rgba(214, 150, 120, 0.14), transparent 14%),
+    radial-gradient(circle at 0% 100%, rgba(214, 150, 120, 0.14), transparent 14%),
+    radial-gradient(circle at 100% 100%, rgba(214, 150, 120, 0.16), transparent 14%),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.45), transparent 4%, transparent 96%, rgba(0, 0, 0, 0.45));
+}
+
+#cover:focus-visible {
+  box-shadow:
+    inset 0 0 0 2px var(--gold-mid),
+    inset 0 0 60px rgba(0, 0, 0, 0.75);
+}
+
+/* Gold-foil embossed lettering */
+.cover-emboss {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.cover-emboss > span {
+  display: block;
+  color: transparent;
+  background: linear-gradient(180deg,
+    var(--gold-hi) 0%,
+    var(--gold-mid) 45%,
+    var(--gold-lo) 52%,
+    var(--gold-mid) 70%,
+    var(--gold-hi) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter:
+    drop-shadow(0 1px 0 rgba(255, 228, 160, 0.18))
+    drop-shadow(0 -1px 1px rgba(0, 0, 0, 0.9));
+}
+
+.cover-line {
+  font-family: 'IM Fell English', Georgia, serif;
+  font-style: italic;
+  font-size: clamp(0.95rem, 1.6vw, 1.2rem);
+  letter-spacing: 0.08em;
+}
+
+.cover-title {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-weight: 600;
+  font-size: clamp(2.6rem, 6.4vw, 5rem);
+  line-height: 1;
+  letter-spacing: 0.08em;
+  margin: 0.35rem 0;
+}
+
+/* Closed: cover sits flat; pages are not rendered */
+#book.closed #cover {
+  visibility: visible;
+  transform: none;
+}
+
+
+/* -------------------------------------------------------------------------
+   04. Open book, leather frame & gutter
+   ------------------------------------------------------------------------- */
+
+/* The two-page spread, framed by the leather board */
+#pages {
+  position: absolute;
+  inset: var(--gutter);
+  z-index: 1;
+  display: none;            /* hidden while closed */
+  gap: 0;
+}
+
+#book.open {
+  cursor: default;
+  animation: bookOpen 0.9s var(--ease-soft);
+}
+
+#book.open #pages {
+  display: flex;
+  animation: spreadIn 0.9s var(--ease-soft) both;
+}
+
+/* Stitched inner frame on the leather, visible only when open */
+#book.open::after {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  z-index: 3;
+  border: 1px dashed var(--stitch);
+  border-radius: 4px;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Cover swings open to the left, then leaves the layout */
+#book.open #cover {
+  transform: rotateY(-180deg);
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform 0.9s var(--ease-swing), visibility 0s linear 0.9s;
+}
+
+/* Center gutter: a soft shadow where the pages meet */
+#pages::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 90px;
+  transform: translateX(-50%);
+  z-index: 3;
+  pointer-events: none;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(40, 20, 6, 0.10) 30%,
+    rgba(30, 14, 4, 0.42) 48%,
+    rgba(20, 8, 2, 0.60) 50%,
+    rgba(30, 14, 4, 0.42) 52%,
+    rgba(40, 20, 6, 0.10) 70%,
+    transparent 100%);
+}
+
+
+/* -------------------------------------------------------------------------
+   05. Parchment pages (shared)
+   ------------------------------------------------------------------------- */
+
+.page {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: clamp(18px, 2.6vw, 34px) clamp(20px, 3.2vw, 44px);
+  color: var(--page-ink);
+  background:
+    /* foxing spots */
+    radial-gradient(circle at 14% 22%, rgba(120, 78, 32, 0.20) 0 2px, transparent 6px),
+    radial-gradient(circle at 81% 33%, rgba(110, 68, 26, 0.16) 0 3px, transparent 9px),
+    radial-gradient(circle at 63% 77%, rgba(120, 78, 32, 0.18) 0 2px, transparent 7px),
+    radial-gradient(circle at 28% 88%, rgba(100, 60, 20, 0.14) 0 4px, transparent 12px),
+    radial-gradient(circle at 92% 86%, rgba(100, 60, 20, 0.12) 0 2px, transparent 6px),
+    /* darkened edges */
+    radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(92, 56, 20, 0.38) 100%),
+    /* fibre */
+    repeating-linear-gradient(0deg, rgba(90, 60, 25, 0.025) 0 1px, transparent 1px 3px),
+    /* paper */
+    linear-gradient(168deg, var(--parchment-hi) 0%, var(--parchment-mid) 55%, var(--parchment-lo) 100%);
+}
+
+.page-left {
+  border-radius: 3px 0 0 3px;
+  box-shadow:
+    inset -36px 0 48px -30px rgba(40, 20, 5, 0.55),
+    inset 0 0 40px rgba(80, 50, 15, 0.25);
+}
+
+.page-right {
+  border-radius: 0 3px 3px 0;
+  box-shadow:
+    inset 36px 0 48px -30px rgba(40, 20, 5, 0.55),
+    inset 0 0 40px rgba(80, 50, 15, 0.25);
+}
+
+
+/* -------------------------------------------------------------------------
+   06. Table of contents (left page)
+   ------------------------------------------------------------------------- */
+
+.toc-heading {
+  position: relative;
+  flex: none;
+  margin: 0 0 0.9rem;
+  padding-bottom: 0.6rem;
+  text-align: center;
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-weight: 600;
+  font-variant: small-caps;
+  font-size: clamp(1.5rem, 2.4vw, 2rem);
+  letter-spacing: 0.16em;
+  color: var(--page-ink);
+}
+
+.toc-heading::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 56px;
+  height: 1px;
+  transform: translateX(-50%);
+  background: linear-gradient(90deg, transparent, rgba(42, 29, 16, 0.5), transparent);
+}
+
+/* Ordered list: flexes to fill the page, scrolls when long */
+#toc-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0 6px 0 0;
+  list-style: none;
+  overflow-y: auto;
+  counter-reset: toc;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(70, 38, 20, 0.45) transparent;
+}
+
+#toc-list li {
+  counter-increment: toc;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5em;
+  padding: 0.42em 0.2em;
+  border-radius: 2px;
+  font-family: 'IM Fell English', Georgia, serif;
+  font-size: clamp(0.98rem, 1.45vw, 1.12rem);
+  color: #3b2a18;
+  cursor: pointer;
+  transition: color 0.3s var(--ease-soft), letter-spacing 0.3s var(--ease-soft);
+}
+
+#toc-list li::before {
+  content: counter(toc, decimal) ".";
+  flex: none;
+  width: 1.6em;
+  text-align: right;
+  opacity: 0.55;
+  font-variant-numeric: oldstyle-nums;
+}
+
+/* Title sits on the left and ellipsizes if long */
+#toc-list .toc-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 70%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Dotted leader filling the gap between title and date */
+#toc-list .toc-leader {
+  flex: 1 1 auto;
+  min-width: 14px;
+  height: 0;
+  align-self: baseline;
+  border-bottom: 1.5px dotted rgba(42, 29, 16, 0.42);
+  transform: translateY(-0.3em);
+  transition: border-color 0.3s var(--ease-soft);
+}
+
+#toc-list .toc-date {
+  flex: none;
+  white-space: nowrap;
+  font-style: italic;
+  font-size: 0.82em;
+  color: var(--ink-faded);
+  font-variant-numeric: oldstyle-nums;
+}
+
+/* Hover: ink darkens, letters open slightly */
+#toc-list li:hover {
+  color: #120a04;
+  letter-spacing: 0.03em;
+}
+
+#toc-list li:hover .toc-leader {
+  border-color: rgba(18, 10, 4, 0.6);
+}
+
+/* Active entry: a faint ink underline beneath the title */
+#toc-list li.active {
+  color: #1a2030;
+}
+
+#toc-list li.active .toc-title {
+  padding-bottom: 1px;
+  background-image: linear-gradient(90deg, rgba(29, 35, 51, 0.6), rgba(29, 35, 51, 0.12));
+  background-size: 100% 1px;
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+}
+
+#toc-list li:focus-visible {
+  outline: 1px dotted rgba(42, 29, 16, 0.5);
+  outline-offset: 2px;
+}
+
+/* Quiet inked-line button at the foot of the contents */
+#new-session {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 0.8rem;
+  padding: 0.3rem 0 0.25rem;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid rgba(29, 35, 51, 0.35);
+  border-radius: 0;
+  font-family: 'IM Fell English', Georgia, serif;
+  font-style: italic;
+  font-size: clamp(0.95rem, 1.4vw, 1.08rem);
+  letter-spacing: 0.02em;
+  color: var(--ink-user);
+  cursor: pointer;
+  transition: border-color 0.3s, letter-spacing 0.3s, color 0.3s;
+}
+
+#new-session:hover {
+  border-bottom-color: rgba(29, 35, 51, 0.8);
+  letter-spacing: 0.05em;
+}
+
+#new-session:focus-visible {
+  outline: 1px dotted rgba(29, 35, 51, 0.6);
+  outline-offset: 3px;
+}
+
+/* Tiny italic status line at the very bottom */
+#engine-status {
+  flex: none;
+  min-height: 1em;
+  margin-top: 0.55rem;
+  font-family: 'IM Fell English', Georgia, serif;
+  font-style: italic;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--ink-faded);
+}
+
+
+/* -------------------------------------------------------------------------
+   07. Session page (right page)
+   ------------------------------------------------------------------------- */
+
+#session-header {
+  flex: none;
+  margin-bottom: 0.4rem;
+  padding-bottom: 0.7rem;
+  text-align: center;
+  border-bottom: 1px solid rgba(96, 62, 30, 0.22);
+}
+
+#session-title {
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-style: italic;
+  font-weight: 600;
+  font-size: clamp(1.3rem, 2vw, 1.6rem);
+  line-height: 1.2;
+  color: var(--page-ink);
+}
+
+#session-date {
+  display: block;
+  margin-top: 0.25rem;
+  font-family: 'IM Fell English', Georgia, serif;
+  font-style: italic;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-faded);
+  font-variant-numeric: oldstyle-nums;
+}
+
+/* Writing area: ruled paper that scrolls with its text */
+#entries {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  background-image: linear-gradient(to bottom, transparent 33px, var(--ruling) 33px, var(--ruling) 34px);
+  background-size: 100% var(--line);
+  background-repeat: repeat;
+  background-attachment: local;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(70, 38, 20, 0.4) transparent;
+}
+
+.entry {
+  position: relative;
+  margin: 0 0 var(--line);  /* keeps text on the ruled grid */
+}
+
+/* Each ink line: pre-wrap keeps spaces, sits exactly on the grid */
+.entry .ink {
+  display: block;
+  margin: 0;
+  min-height: var(--line);
+  line-height: var(--line);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+
+/* -------------------------------------------------------------------------
+   08. Entries & ink
+   ------------------------------------------------------------------------- */
+
+/* The user's handwriting: blue-black, Homemade Apple */
+.entry.user {
+  font-family: 'Homemade Apple', cursive;
+  font-size: clamp(15px, 1.6vw, 20px);
+  color: var(--ink-user);
+}
+
+.entry.user .ink {
+  color: var(--ink-user);
+  text-shadow: 0 0 0.6px rgba(29, 35, 51, 0.55);
+  transform-origin: 0 50%;
+}
+
+/* The diary's reply: spindly Pinyon Script in sepia-red-black, wet ink */
+.entry.diary {
+  padding-left: 2.2em;
+  font-family: 'Pinyon Script', cursive;
+  font-size: clamp(20px, 2.1vw, 26px);
+  letter-spacing: 0.03em;
+  color: var(--ink-diary);
+}
+
+.entry.diary .ink {
+  color: var(--ink-diary);
+  word-spacing: 0.06em;
+  text-shadow:
+    0 0 1px rgba(58, 13, 13, 0.55),
+    0 0 5px rgba(58, 13, 13, 0.2),
+    0 1px 0 rgba(20, 4, 4, 0.18);
+}
+
+/* Each character of the reply. Inline (not inline-block) so words still wrap
+   normally; transforms do not apply to inline boxes, so the rise is done with
+   a relative `top` offset instead of translateY. */
+.entry.diary .ch {
+  position: relative;
+  display: inline;
+}
+
+
+/* -------------------------------------------------------------------------
+   09. Ink effects
+   ------------------------------------------------------------------------- */
+
+/* The user's ink sinks into the page after it is sent */
+.entry.user.absorbing .ink {
+  animation: inkAbsorb 2.2s var(--ease-soft) forwards;
+}
+
+/* Final state: identical to the end of the absorb animation, no motion */
+.entry.user.absorbed .ink {
+  opacity: 0.28;
+  filter: blur(1.5px);
+  transform: scale(0.97);
+}
+
+/* The diary's reply writes itself, one character at a time */
+.entry.diary .ink.writing .ch {
+  opacity: 0;
+  animation: inkIn 0.7s ease-out forwards;
+  animation-delay: calc(var(--i, 0) * 38ms);
+}
+
+/* Settled reply: fully visible, no animation */
+.entry.diary .ink.done .ch,
+.entry.diary .ink:not(.writing) .ch {
+  opacity: 1;
+  filter: none;
+  top: 0;
+  animation: none;
+}
+
+/* Thinking: three slow-pulsing ink dots while the reply is pending */
+.entry.diary.pending .ink::after {
+  content: "";
+  display: inline-block;
+  width: 2.6em;
+  height: 0.5em;
+  margin-left: 0.15em;
+  vertical-align: middle;
+  background: radial-gradient(circle, var(--ink-diary) 0 0.09em, transparent 0.12em) 0 50% / 0.87em 100% repeat-x;
+  animation: inkDots 2.4s ease-in-out infinite;
+}
+
+@keyframes inkAbsorb {
+  from {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1);
+  }
+  to {
+    opacity: 0.28;
+    filter: blur(1.5px);
+    transform: scale(0.97);
+  }
+}
+
+@keyframes inkIn {
+  from {
+    opacity: 0;
+    filter: blur(2px);
+    top: 4px;
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    top: 0;
+  }
+}
+
+@keyframes inkDots {
+  0%, 100% { opacity: 0.18; }
+  50%      { opacity: 0.85; }
+}
+
+
+/* -------------------------------------------------------------------------
+   10. Entry form (handwriting input)
+   ------------------------------------------------------------------------- */
+
+#entry-form {
+  position: relative;
+  flex: none;
+  margin: 0.4rem 0 0;
+  padding-bottom: 1.1rem;
+}
+
+#entry-input {
+  display: block;
+  width: 100%;
+  min-height: calc(var(--line) * 2);
+  max-height: calc(var(--line) * 5);
+  margin: 0;
+  padding: 0 0 2px;
+  resize: none;
+  border: 0;
+  border-bottom: 1px solid rgba(29, 35, 51, 0.3);   /* the faint caret line */
+  border-radius: 0;
+  background: transparent;
+  font-family: 'Homemade Apple', cursive;
+  font-size: clamp(15px, 1.6vw, 20px);
+  line-height: var(--line);
+  color: var(--ink-user);
+  caret-color: var(--ink-user);
+  outline: none;
+  box-shadow: none;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(70, 38, 20, 0.4) transparent;
+  transition: border-color 0.4s, box-shadow 0.4s;
+}
+
+#entry-input::placeholder {
+  color: rgba(29, 35, 51, 0.36);
+  font-style: normal;
+  opacity: 1;
+}
+
+/* Focus: no default outline, a subtle glow under the line */
+#entry-input:focus,
+#entry-input:focus-visible {
+  outline: none;
+  border-bottom-color: rgba(29, 35, 51, 0.7);
+  box-shadow: 0 3px 8px -4px rgba(29, 35, 51, 0.5);
+}
+
+
+/* -------------------------------------------------------------------------
+   11. Empty state & utility controls
+   ------------------------------------------------------------------------- */
+
+#page-empty {
+  display: none;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  max-width: 22em;
+  margin: auto;
+  padding: 2rem 1rem;
+  text-align: center;
+  font-family: 'IM Fell English', Georgia, serif;
+  font-style: italic;
+  font-size: clamp(1rem, 1.5vw, 1.15rem);
+  line-height: 1.6;
+  color: var(--ink-faded);
+}
+
+/* JS adds .empty to #session-page when there is no entry open */
+#session-page.empty #page-empty {
+  display: flex;
+}
+
+#session-page.empty #session-header,
+#session-page.empty #entries,
+#session-page.empty #entry-form,
+#session-page.empty #delete-session {
+  display: none;
+}
+
+/* Back to contents: only shown on narrow screens (see section 13) */
+#back-to-toc {
+  display: none;
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  z-index: 4;
+  padding: 0.3rem 0.4rem;
+  background: none;
+  border: 0;
+  font-family: 'IM Fell English', Georgia, serif;
+  font-style: italic;
+  font-size: 0.85rem;
+  color: var(--ink-user);
+  opacity: 0.75;
+  cursor: pointer;
+  transition: opacity 0.3s;
+}
+
+#back-to-toc:hover,
+#back-to-toc:focus-visible {
+  opacity: 1;
+}
+
+/* Tiny, faded, bottom-right; reddens on hover */
+#delete-session {
+  position: absolute;
+  right: 12px;
+  bottom: 6px;
+  z-index: 4;
+  padding: 0.2rem 0.3rem;
+  background: none;
+  border: 0;
+  font-family: 'IM Fell English', Georgia, serif;
+  font-style: italic;
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  color: var(--ink-faded);
+  opacity: 0.55;
+  cursor: pointer;
+  transition: color 0.4s, opacity 0.4s;
+}
+
+#delete-session:hover,
+#delete-session:focus-visible {
+  color: #8a1717;
+  opacity: 1;
+}
+
+
+/* -------------------------------------------------------------------------
+   12. Opening motion
+   ------------------------------------------------------------------------- */
+
+@keyframes bookOpen {
+  from { transform: scale(0.975); }
+  to   { transform: scale(1); }
+}
+
+@keyframes spreadIn {
+  from {
+    opacity: 0;
+    filter: blur(3px) sepia(0.2);
+    transform: translateX(-2%);
+  }
+  to {
+    opacity: 1;
+    filter: none;
+    transform: none;
+  }
+}
+
+
+/* -------------------------------------------------------------------------
+   13. Responsive: single page under 760px
+   ------------------------------------------------------------------------- */
+
+@media (max-width: 759.98px) {
+  #desk {
+    padding: 0;
+  }
+
+  /* The book fills the screen */
+  #book {
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    height: 100vh;
+    height: 100dvh;
+    aspect-ratio: auto;
+    border-radius: 0;
+  }
+
+  #book.closed::before,
+  #book.open::after {
+    display: none;
+  }
+
+  #cover::before {
+    inset: 12px;
+  }
+
+  #pages {
+    inset: 10px;
+  }
+
+  #pages::after {
+    display: none;
+  }
+
+  /* One page at a time; JS sets data-view on #book (default: contents) */
+  #book:not([data-view="session"]) #session-page,
+  #book[data-view="session"] #toc-page {
+    display: none;
+  }
+
+  .page {
+    padding: 18px 16px 16px;
+  }
+
+  .page-left,
+  .page-right {
+    border-radius: 3px;
+    box-shadow: inset 0 0 30px rgba(80, 50, 15, 0.25);
+  }
+
+  #back-to-toc {
+    display: inline-block;
+  }
+
+  #session-header {
+    padding-top: 26px;   /* clears the back button */
+  }
+
+  #delete-session {
+    right: 10px;
+    bottom: 4px;
+  }
+}
+
+
+/* -------------------------------------------------------------------------
+   14. Reduced motion: show final states, no animation
+   ------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  #book,
+  #book.closed:hover,
+  #book.open,
+  #book.open #pages,
+  #cover,
+  #book.open #cover,
+  #toc-list li,
+  #toc-list .toc-leader,
+  #new-session,
+  #back-to-toc,
+  #delete-session,
+  #entry-input {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  #book.closed:hover {
+    transform: none;
+  }
+
+  /* Diary reply appears in full at once */
+  .entry.diary .ink .ch,
+  .entry.diary .ink.writing .ch {
+    opacity: 1;
+    filter: none;
+    top: 0;
+    animation: none;
+  }
+
+  /* Absorbed ink rests in its final state */
+  .entry.user.absorbing .ink {
+    animation: none;
+    opacity: 0.28;
+    filter: blur(1.5px);
+    transform: scale(0.97);
+  }
+
+  /* Thinking dots are static but still visible */
+  .entry.diary.pending .ink::after {
+    animation: none;
+    opacity: 0.6;
+  }
+}
