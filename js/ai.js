@@ -27,6 +27,9 @@ import { isCrisis, crisisReply } from './crisis.js';
 import { maybeStrike, stripStrikes, hasStrike } from './strike.js';
 import { timeNote } from './timesense.js';
 import { familiarityNote } from './familiarity.js';
+import { analyze } from './understand.js';
+import { emotionByMeaning } from './emotion.js';
+import { semanticCandidates } from './retrieve.js';
 
 // Which model to load (and whether to load one at all) is decided by the app
 // with js/mind.js and passed to initEngine(); see GitHub issues #6 and #25.
@@ -355,7 +358,10 @@ export async function reply(messages, ctx = {}, { onText } = {}) {
           }
         } : null;
         const out = clean(await generateRaw(persona, messages, '', REPLY_MAX_TOKENS, onRaw), { allowStrike });
-        if (out) return out;
+        if (out) {
+          if (ctx.trace) ctx.trace.family = 'llm';
+          return out;
+        }
       } catch (err) {
         console.warn('[ai] Generation failed, using a scripted line.', err);
       }
@@ -373,9 +379,20 @@ const prefixed = (note) => (note ? `\n\n${note}` : '');
  */
 async function scripted(messages, ctx) {
   const last = [...messages].reverse().find((m) => m.role === 'user');
+  const text = last?.text || '';
   let rewrite = null;
-  try { rewrite = (await matchIntent(last?.text || ''))?.canonical || null; } catch { /* ignore */ }
-  const line = scriptedReply(messages, { ...ctx, rewrite });
+  try { rewrite = (await matchIntent(text))?.canonical || null; } catch { /* ignore */ }
+  // When MiniLM is ready: emotion and line retrieval by meaning (issues #31, #34).
+  let analysis = null;
+  let emotion = null;
+  let semantic = null;
+  try { analysis = analyze(text); } catch { /* engine analyses it itself */ }
+  try { emotion = await emotionByMeaning(text); } catch { /* lexicon fallback in the engine */ }
+  try {
+    const exclude = new Set([...recentDiaryTexts(messages), ...(ctx.recentAcross || [])]);
+    semantic = await semanticCandidates(text, { k: 6, exclude, analysis });
+  } catch { /* lexical fallback in the engine */ }
+  const line = scriptedReply(messages, { ...ctx, rewrite, analysis, emotion, semantic });
   return maybeStrike(line, { recentDiary: recentDiaryTexts(messages) });
 }
 

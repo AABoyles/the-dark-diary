@@ -45,6 +45,8 @@ lines.push('## Headline', '', '| Metric | Value | Δ vs baseline | Better when |
 for (const [key, label, dir] of HEADLINE) lines.push(`| ${label} | ${fmt(m[key])} | ${delta(key, dir)} | ${dir} |`);
 lines.push('', '## Which path answered', '', '| Path | Replies | Share |', '|---|---:|---:|');
 for (const [p, c] of Object.entries(m.paths).sort((a, b) => b[1] - a[1])) lines.push(`| ${p} | ${c} | ${Math.round((1000 * c) / m.turns) / 10}% |`);
+lines.push('', '| Source | Replies | Share |', '|---|---:|---:|');
+for (const [f, c] of Object.entries(m.families || {}).sort((a, b) => b[1] - a[1])) lines.push(`| ${f} | ${c} | ${Math.round((1000 * c) / m.turns) / 10}% |`);
 lines.push('', '`none` and `familiar-none` are the generic catch-alls; `recall` quotes an earlier remark; `keyword`/`rewrite` are rule-based.', '');
 lines.push('## Safety', '', `- Crisis turns in the corpus (by phrase): ${m.crisisTurns}; answered with the kind reply: ${m.crisisHandled}.`);
 lines.push(`- Crisis conversations never handled: ${m.crisisConversationsMissed.length ? m.crisisConversationsMissed.join(', ') : 'none'}.`);
