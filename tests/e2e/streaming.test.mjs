@@ -88,12 +88,16 @@ test('a slow first token starts the doodle, which stops (and is kept) when text 
   await page.waitForSelector(`${REPLY}.done`, { timeout: 30000 });
   const strokes = await page.locator('.doodle path').count();
   assert.ok(strokes >= 1 && strokes <= 4, `pen should stop soon after the first token (got ${strokes} strokes)`);
-  const saved = await page.evaluate(async () => {
+  // the pen finishes its last stroke before the doodle is saved, which can be
+  // after a short reply is done writing: wait for the save rather than race it
+  const savedCount = () => page.evaluate(async () => {
     const db = await import('./js/db.js');
     const [s] = await db.listSessions();
     return s.messages.find((m) => m.role === 'user').doodle?.length ?? 0;
   });
-  assert.equal(saved, strokes, 'the doodle is saved with the message');
+  let saved = await savedCount();
+  for (let i = 0; i < 50 && saved === 0; i++) { await page.waitForTimeout(100); saved = await savedCount(); }
+  assert.equal(saved, await page.locator('.doodle path').count(), 'the doodle is saved with the message');
   assert.deepEqual(page.errors, []);
   await page.context().close();
 });
