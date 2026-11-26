@@ -2,6 +2,7 @@
 import * as db from './db.js';
 import { initEngine, reply, makeTitle } from './ai.js';
 import { registerPWA } from './pwa.js';
+import { startDoodle } from './doodle.js';
 
 const $ = (s) => document.querySelector(s);
 const book = $('#book');
@@ -123,7 +124,6 @@ function makeEntry(role, text, { animate = false } = {}) {
   div.appendChild(p);
   if (role === 'user') {
     p.textContent = text;
-    div.classList.add(animate ? 'absorbing' : 'absorbed');
   } else if (animate) {
     writeInk(p, text);
   } else {
@@ -197,16 +197,17 @@ async function submit() {
 
   const pending = document.createElement('div');
   pending.className = 'entry diary pending';
-  pending.innerHTML = '<p class="ink"></p>';
   entriesEl.appendChild(pending);
+  const stopDoodle = startDoodle(pending);
   follow();
 
-  // Let the user's ink sink for a moment before the diary answers.
-  const minWait = new Promise((r) => setTimeout(r, 1600));
+  // Give the pen a moment to doodle, even when the answer is instant.
+  const minWait = new Promise((r) => setTimeout(r, 1500));
   let answer;
   try { [answer] = await Promise.all([reply(session.messages), minWait]); }
   catch { answer = 'The diary declines to answer. How very like you to have asked.'; }
 
+  stopDoodle();
   const entry = makeEntry('diary', answer, { animate: true });
   pending.replaceWith(entry);
   session.messages.push({ role: 'diary', text: answer, ts: Date.now() });
