@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Dark Diary</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Homemade+Apple&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=IM+Fell+English:ital@0;1&family=Pinyon+Script&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<main id="desk">
+  <!-- CLOSED BOOK: click to open -->
+  <section id="book" class="closed" aria-label="The diary">
+    <div id="cover" role="button" tabindex="0" aria-label="Open the diary">
+      <div class="cover-emboss">
+        <span class="cover-line">Property of</span>
+        <span class="cover-title">The Diary</span>
+        <span class="cover-line">of nobody in particular</span>
+      </div>
+    </div>
+
+    <!-- OPEN BOOK -->
+    <div id="pages">
+      <!-- Left page: table of contents -->
+      <div class="page page-left" id="toc-page">
+        <h1 class="toc-heading">Contents</h1>
+        <ol id="toc-list"></ol>
+        <button id="new-session" type="button">Write a new entry…</button>
+        <div id="engine-status" aria-live="polite"></div>
+      </div>
+
+      <!-- Right page: the session -->
+      <div class="page page-right" id="session-page">
+        <header id="session-header">
+          <h2 id="session-title"></h2>
+          <time id="session-date"></time>
+        </header>
+        <div id="entries" aria-live="polite"></div>
+        <form id="entry-form" autocomplete="off">
+          <textarea id="entry-input" rows="2" placeholder="Write something…" aria-label="Write in the diary"></textarea>
+        </form>
+        <div id="page-empty">Choose an entry from the contents, or begin a new one.</div>
+        <button id="back-to-toc" type="button" aria-label="Back to contents">⟵ Contents</button>
+        <button id="delete-session" type="button" title="Burn this entry">Burn entry</button>
+      </div>
+    </div>
+  </section>
+</main>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
