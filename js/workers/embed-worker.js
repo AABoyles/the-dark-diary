@@ -17,7 +17,12 @@
  */
 
 const EMBED_MODEL_ID = 'Xenova/all-MiniLM-L6-v2';
-const TRANSFORMERS_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2';
+// Vendored by scripts/vendor.mjs (see vendor.lock.json); served from this origin.
+const TRANSFORMERS_URL = new URL('../../vendor/transformers/transformers.min.js', import.meta.url).href;
+// onnxruntime's wasm and its loader sit side by side in vendor/onnxruntime/. A string
+// prefix (not an object of URLs) stops transformers re-fetching them as blob: URLs,
+// which the page's CSP does not allow.
+const ORT_WASM_PATHS = new URL('../../vendor/onnxruntime/', import.meta.url).href;
 
 let tj = null;          // transformers.js module
 let extractor = null;   // feature-extraction pipeline
@@ -43,12 +48,23 @@ function preferredDevice() {
   return self.navigator?.gpu ? 'webgpu' : 'wasm';
 }
 
+// Quantized (q8) weights first: smaller download, and the same embeddings closely enough.
+// fp32 is the fallback if the q8 files cannot be loaded.
 async function build(device) {
-  return tj.pipeline('feature-extraction', EMBED_MODEL_ID, {
-    device,
-    dtype: 'fp32',
-    progress_callback: forwardProgress,
-  });
+  const common = { device, progress_callback: forwardProgress };
+  try {
+    return await tj.pipeline('feature-extraction', EMBED_MODEL_ID, { ...common, dtype: 'q8' });
+  } catch (err) {
+    console.warn('[embed-worker] q8 model failed to load, falling back to fp32.', err);
+    return tj.pipeline('feature-extraction', EMBED_MODEL_ID, { ...common, dtype: 'fp32' });
+  }
+}
+
+async function loadTransformers() {
+  const mod = await import(TRANSFORMERS_URL);
+  mod.env.backends.onnx.wasm.wasmPaths = ORT_WASM_PATHS;
+  mod.env.allowLocalModels = false; // models come from the Hub only, never from the page's own files
+  return mod;
 }
 
 async function handleInit(msg) {
@@ -56,7 +72,7 @@ async function handleInit(msg) {
     self.postMessage({ type: 'ready', id: msg.id });
     return;
   }
-  tj = tj ?? await import(TRANSFORMERS_URL);
+  tj = tj ?? await loadTransformers();
   const first = preferredDevice();
   try {
     extractor = await build(first);

@@ -15,7 +15,12 @@
  *   { type: 'error', id, message }
  */
 
-const TRANSFORMERS_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2';
+// Vendored by scripts/vendor.mjs (see vendor.lock.json); served from this origin.
+const TRANSFORMERS_URL = new URL('../../vendor/transformers/transformers.min.js', import.meta.url).href;
+// onnxruntime's wasm and its loader sit side by side in vendor/onnxruntime/. A string
+// prefix (not an object of URLs) stops transformers re-fetching them as blob: URLs,
+// which the page's CSP does not allow.
+const ORT_WASM_PATHS = new URL('../../vendor/onnxruntime/', import.meta.url).href;
 
 let tj = null;          // the transformers.js module, loaded on init
 let runChat = null;     // async (chat, options, onText) => string
@@ -87,8 +92,15 @@ function streamerFor(tokenizer, onText) {
   }
 }
 
+async function loadTransformers() {
+  const mod = await import(TRANSFORMERS_URL);
+  mod.env.backends.onnx.wasm.wasmPaths = ORT_WASM_PATHS;
+  mod.env.allowLocalModels = false; // models come from the Hub only, never from the page's own files
+  return mod;
+}
+
 async function handleInit(msg) {
-  tj = tj ?? await import(TRANSFORMERS_URL);
+  tj = tj ?? await loadTransformers();
   const device = msg.device === 'webgpu' ? 'webgpu' : 'wasm';
   runChat = await load(msg.modelId, { device, dtype: msg.dtype });
   self.postMessage({ type: 'ready', id: msg.id });
