@@ -679,7 +679,7 @@ body {
 /* Pending reply: a pen doodles on the page (see js/doodle.js) */
 .entry.diary.pending .doodle {
   display: block;
-  height: calc(var(--line) * 2.6);
+  height: calc(var(--line) * 3.4);
   width: auto;
   aspect-ratio: 3 / 1;
   max-width: 100%;
