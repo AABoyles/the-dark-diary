@@ -7,7 +7,8 @@ import { elizaReply } from './eliza.js';
 /**
  * Reply to a transcript with a scripted line.
  * @param {Array<{role: 'user'|'diary', text: string}>} messages
- * @param {object} [ctx] recollections and rewrite, passed through to elizaReply
+ * @param {object} [ctx] recollections, rewrite, time and familiarity, passed through
+ *   unchanged to elizaReply
  * @returns {string}
  */
 export function scriptedReply(messages = [], ctx = {}) {

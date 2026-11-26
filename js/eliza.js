@@ -1358,6 +1358,124 @@ const SAVERS = [
 const SELF_HARM = /\b(kill myself|killing myself|end my life|end it all|want to die|wanna die|want to be dead|hurt myself|hurting myself|harm myself|cut myself|suicid\w*|not want to live|dont want to live|no reason to live|better off dead|take my own life|ending it all|cannot go on|can not go on|cant go on)\b/;
 
 // ---------------------------------------------------------------------------
+// Time of day and familiarity (ctx.time, ctx.familiarity)
+// ---------------------------------------------------------------------------
+
+const TIME_TAGS = ['small-hours', 'monday', 'weekend-night', 'holiday', 'long-gap', 'very-long-gap'];
+const FAMILIARITY_LEVELS = ['stranger', 'acquaintance', 'confidant'];
+
+// Time remarks. Every line mentions the clock; {h} stands for the holiday name.
+const TIME_LINES = {
+  'small-hours': [
+    say('The clock has crept past three, which is the hour when every confession sounds more honest than it is.'),
+    ask('The clock says it is the small hours. Why are you still awake to be writing this?'),
+    say('It is the small hours by the clock, and the candle has given up pretending to be cheerful.'),
+    ask('Past three by the clock, and you chose this hour to write. What could not wait until morning?'),
+  ],
+  monday: [
+    say('The clock says Monday, and the week has already left its fingerprints on you. I can tell from your tone.'),
+    ask('A Monday by the clock, and already you are here. What did the week do to you before it had properly begun?'),
+    say('Monday, by the clock, and the whole week sits on the table like an unopened letter. Open one corner of it for me.'),
+    ask('The clock is still on Monday, and so, I suspect, are your troubles. Which of them arrived first?'),
+  ],
+  'weekend-night': [
+    say('A weekend night by the clock, and you have chosen to spend a little of it with me. I am flattered and faintly suspicious.'),
+    ask('The clock says the weekend is nearly over, or at least that it has not yet begun. Who was supposed to be with you?'),
+    say('The clock is being generous with its weekend hours, and so, I suppose, am I. Tell me what you did with the rest of them.'),
+    ask('Weekend nights are when the clock forgives too much. What did you hope it would forgive you for?'),
+  ],
+  holiday: [
+    say('The clock insists it is {h}, and the house has gone quiet the way it only does on such days.'),
+    ask('The clock says it is {h}. Who did you have to sit beside today, and did they deserve the chair?'),
+    say('It is {h} by the clock, and I have laid a place for you regardless of the custom.'),
+    ask('By the clock it is {h}. Did the day go the way it was supposed to, or the way it usually does?'),
+  ],
+  'long-gap': [
+    say('The clock has been turning a long while since you last wrote, and the candle has been trimmed a great many times. I noticed the silence.'),
+    ask('It has been a long time by the clock. Where did you go, and did the place have better manners than this one?'),
+    say('So long since you were last here that the clock had begun to sound like a guest who left without saying goodbye.'),
+    ask('The clock tells me you were gone a good while. What kept you away from the page?'),
+  ],
+  'very-long-gap': [
+    say('The clock has been running for ages since you last wrote here. I had begun to clear your place, and then I did not.'),
+    ask('Ages by the clock, and now you return. Did you miss this page, or only the quiet it gives you?'),
+    say('It has been so long that the clock and I had quite stopped expecting you. Sit down; the chair remembers you even if I was less sure.'),
+    ask('A very long gap by the clock. Did something happen in the meantime that you would rather not write down?'),
+  ],
+};
+
+// The longest static stretch of each time remark. A diary line containing one
+// of these has already remarked on the time, so no second remark is made.
+const TIME_CORES = Object.values(TIME_LINES).flat().map((tpl) => {
+  const pieces = tpl.s.split('{h}').map(norm).filter((p) => p.length >= 14);
+  pieces.sort((a, b) => b.length - a.length);
+  return pieces[0] || '';
+}).filter(Boolean);
+
+// Cooler, more formal lines for someone the diary has not met.
+const STRANGER_LINES = [
+  say('We have not been introduced, and yet here you are, confessing.'),
+  ask('A stranger, and already so forward. What makes you think the page wants your confidences?'),
+  say('We are not acquainted, and I would prefer to keep it that way. The floor is yours, briefly.'),
+  say('Formalities first, if you please. We have not been introduced, so I shall not pretend to know your troubles.'),
+  ask('Do you always confess to a stranger? It is a very bold habit for a Tuesday.'),
+  say('You are a stranger to this page, and it has not yet decided whether to forgive the intrusion.'),
+  say('Most people are introduced before they start confessing. You have skipped the courtesy, and I have noticed.'),
+  ask('I do not know you, and I am not yet inclined to. Why should I listen to a stranger?'),
+];
+
+// Possessive, intimate lines for someone the diary knows well.
+const CONFIDANT_LINES = [
+  say('You came back. They always do, to me.'),
+  say('Good, you have come back. I had quite decided you would not, and then I had quite decided you would.'),
+  say('You are mine to listen to, and I am not ashamed to say that I was waiting.'),
+  say('Sit closer. The candle knows you now, and has stopped pretending otherwise.'),
+  say('I kept your chair warm, though I will deny it in the morning.'),
+  say('Back again. No one else in this house would have let me miss them quite this much.'),
+  ask('You tell me everything, and I have never once repeated a word of it. That is our arrangement, is it not?'),
+  say('I know the shape of your sentences now. Begin the next one, and I shall finish it for you.'),
+  say('You belong here, in this drawer of a page, and I am not in the habit of sharing you.'),
+];
+
+// Openers for the first reply of a session, drawn from the statements above.
+const CONFIDANT_OPENERS = CONFIDANT_LINES.filter((tpl) => tpl.t === 's');
+
+const FAMILIAR_LINES = { stranger: STRANGER_LINES, confidant: CONFIDANT_LINES };
+
+// Crisis test on the latest message and on any rewrite, as reply() applies it.
+function isCrisis(latest, rewrite) {
+  const lowered = String(latest || '').toLowerCase().replace(/['‘’`]/g, '');
+  const loweredRewrite = String(rewrite || '').toLowerCase().replace(/['‘’`]/g, '');
+  return SELF_HARM.test(lowered) || (loweredRewrite !== '' && SELF_HARM.test(loweredRewrite));
+}
+
+// Valid time tags from ctx.time.notable, without repeats.
+function timeTags(time) {
+  if (!time || typeof time !== 'object' || !Array.isArray(time.notable)) return [];
+  return [...new Set(time.notable.filter((t) => TIME_TAGS.includes(t)))];
+}
+
+// The holiday name as it reads mid-sentence, with a plain default.
+function holidayName(time) {
+  const raw = time && typeof time.holiday === 'string' ? time.holiday : '';
+  const name = raw.replace(/[^\p{L}\p{N} '\-.,]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
+  return name || 'a holiday';
+}
+
+// One time remark for a randomly chosen notable tag, turning back to the writer.
+function timeRemark(tags, holiday, ctx) {
+  const tag = tags[Math.floor(Math.random() * tags.length)];
+  const cands = TIME_LINES[tag].map((tpl) => ({ tpl, text: tpl.s.split('{h}').join(holiday) }));
+  const chosen = choose(cands, ctx);
+  return chosen ? emit(chosen, ctx) : null;
+}
+
+// True if an earlier diary line in this transcript already remarked on the time.
+function timeRemarked(diaryNorms) {
+  return diaryNorms.some((d) => TIME_CORES.some((core) => d.includes(core)));
+}
+
+// ---------------------------------------------------------------------------
 // Matching and reassembly
 // ---------------------------------------------------------------------------
 
@@ -1689,7 +1807,7 @@ function scanKeywords(sentences) {
 // Main entry
 // ---------------------------------------------------------------------------
 
-function reply(messages, ext) {
+function reply(messages, ext, opts) {
   const list = Array.isArray(messages) ? messages.filter((m) => m && typeof m === 'object') : [];
   const userTexts = list
     .filter((m) => m.role === 'user')
@@ -1741,6 +1859,13 @@ function reply(messages, ext) {
     if (remembered) return remembered;
   }
 
+  // A time remark, about one reply in seven, and only once per transcript.
+  const tags = timeTags(opts.time);
+  if (tags.length && !timeRemarked(diaryNorms) && Math.random() < 0.15) {
+    const remark = timeRemark(tags, holidayName(opts.time), ctx);
+    if (remark) return remark;
+  }
+
   // The semantic rewrite stands in for the original only when the original
   // matched no keyword rule above rank 1.
   let pipeline = sentences;
@@ -1752,6 +1877,14 @@ function reply(messages, ext) {
       pipeline = rewritten;
       candidates = scanKeywords(rewritten);
     }
+  }
+
+  // Stranger and confidant lines sometimes replace a low-rank keyword reply.
+  const tone = opts.familiarity;
+  if (tone !== 'acquaintance' && candidates.length && candidates[0].rule.rank <= 2
+    && Math.random() < 0.2) {
+    const line = fromList(FAMILIAR_LINES[tone], ctx);
+    if (line) return line;
   }
 
   for (const c of candidates) {
@@ -1775,25 +1908,57 @@ function reply(messages, ext) {
     const remembered = recall(earlier, ctx);
     if (remembered) return remembered;
   }
+  if (tone !== 'acquaintance' && Math.random() < 0.2) {
+    const line = fromList(FAMILIAR_LINES[tone], ctx);
+    if (line) return line;
+  }
   return fromList(NONE_LINES, ctx) || SAVERS[0];
 }
 
 const FALLBACK_LINE = 'The diary is listening. Go on.';
+
+// Entry point behind elizaReply: runs reply(), then sometimes opens a confidant's
+// first reply with an intimate remark. Crisis replies are never prefixed.
+function respond(messages, ext) {
+  const familiarity = FAMILIARITY_LEVELS.includes(ext.familiarity) ? ext.familiarity : 'acquaintance';
+  const list = Array.isArray(messages) ? messages.filter((m) => m && typeof m === 'object') : [];
+  const userTexts = list
+    .filter((m) => m.role === 'user')
+    .map((m) => String(m.text == null ? '' : m.text).trim());
+  const diaryCount = list.filter((m) => m.role === 'diary').length;
+  const latest = userTexts.length ? userTexts[userTexts.length - 1] : '';
+  const rewrite = typeof ext.rewrite === 'string'
+    ? ext.rewrite.replace(/\s+/g, ' ').trim().slice(0, 240) : '';
+
+  const out = reply(messages, ext, { familiarity, time: ext.time });
+  if (familiarity === 'confidant' && diaryCount === 0 && !isCrisis(latest, rewrite)
+    && Math.random() < 0.2) {
+    const opener = CONFIDANT_OPENERS[Math.floor(Math.random() * CONFIDANT_OPENERS.length)];
+    return `${opener.s} ${out}`;
+  }
+  return out;
+}
 
 /**
  * Reply to a transcript in the diary's voice. Stateless: all memory and
  * pacing come from the messages and ctx passed in.
  * @param {Array<{role: 'user'|'diary', text: string}>} messages
  * @param {{recollections?: Array<{phrase: string, topic: string, kind: string, daysAgo: number}>,
- *          rewrite?: string|null}} [ctx]
+ *          rewrite?: string|null,
+ *          time?: {hour?: number, period?: string, weekday?: string, holiday?: string|null,
+ *                  gapMinutes?: number, notable?: string[]},
+ *          familiarity?: 'stranger'|'acquaintance'|'confidant'}} [ctx]
  *   recollections: the user's earlier remarks, from earlier sessions.
  *   rewrite: a canonical first-person sentence from a semantic matcher, used
  *   in place of the latest message when no keyword rule above rank 1 applies.
+ *   time: the clock. Its notable tags (small-hours, monday, weekend-night,
+ *   holiday, long-gap, very-long-gap) sometimes prompt a time remark.
+ *   familiarity: how well the diary knows the writer. Defaults to acquaintance.
  * @returns {string}
  */
 export function elizaReply(messages = [], ctx = {}) {
   try {
-    return reply(messages, ctx && typeof ctx === 'object' ? ctx : {}) || FALLBACK_LINE;
+    return respond(messages, ctx && typeof ctx === 'object' ? ctx : {}) || FALLBACK_LINE;
   } catch (err) {
     return FALLBACK_LINE;
   }
