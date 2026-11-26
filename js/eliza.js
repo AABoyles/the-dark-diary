@@ -1547,7 +1547,7 @@ function reflectWords(words) {
 }
 
 // Captured fragments that must never be echoed back ("Ok is a fine thing to be").
-const FRAGMENT_STOP = new Set(['ok', 'okay', 'fine', 'nothing', 'idk', 'yes', 'no', 'maybe', 'sure', 'nah']);
+const FRAGMENT_STOP = new Set(['ok', 'okay', 'fine', 'nothing', 'idk', 'yes', 'no', 'maybe', 'sure', 'nah', 'not', 'never', 'it', 'that', 'this']);
 
 // True for a fragment too short, or made only of stoplisted words, to echo.
 function badFragment(frag) {

@@ -6,49 +6,53 @@
     "turns": 399,
     "conversations": 40,
     "paths": {
-      "none": 80,
-      "keyword": 282,
-      "recall": 30,
+      "dialogue:follow-up": 37,
+      "keyword": 196,
+      "retrieval:lexical": 28,
+      "recall": 17,
+      "grammar": 104,
       "repeat": 4,
+      "dialogue:dodged": 7,
+      "none": 2,
+      "dialogue:abandoned": 1,
       "crisis": 3
     },
-    "genericRate": 20.1,
-    "keywordRate": 70.7,
-    "repeatWithinEntry": 1,
-    "crossSessionRepeatRate": 32.8,
-    "distinctPer100": 66.9,
+    "families": {
+      "dialogue": 45,
+      "eliza": 219,
+      "retrieval": 28,
+      "grammar": 104,
+      "special": 3
+    },
+    "genericRate": 0.5,
+    "keywordRate": 49.1,
+    "repeatWithinEntry": 0,
+    "crossSessionRepeatRate": 1.8,
+    "distinctPer100": 98.2,
     "mostRepeated": [
       {
-        "count": 11,
+        "count": 3,
+        "line": "Ok. A word that closes a conversation with the efficiency of a well-fitted lid. I shall not let it."
+      },
+      {
+        "count": 2,
+        "line": "Again? Repetition is the mind laying a table it has no intention of eating from. What are you avoiding?"
+      },
+      {
+        "count": 2,
         "line": "Terse, and not in the least convincing. Try again, and this time include the part you were hiding."
       },
       {
-        "count": 6,
-        "line": "There is a sentence in there somewhere, buried like a good spoon in a bad stew. Dig for it."
+        "count": 2,
+        "line": "Ok, is it? Your ok is doing a great deal of heavy lifting for so small a word."
       },
       {
-        "count": 6,
-        "line": "Ok, you say, in the tone of someone standing very close to a door. Shall we talk about the door?"
+        "count": 2,
+        "line": "Are you speaking of what you feel, or of what you would like someone else to feel?"
       },
       {
-        "count": 6,
-        "line": "Shall I take that as an invitation, or merely as the sound of someone clearing their throat?"
-      },
-      {
-        "count": 6,
-        "line": "I am not offended by oddness. I am merely curious, which is worse."
-      },
-      {
-        "count": 6,
-        "line": "Say the rest. The part you were about to skip is generally the part that matters."
-      },
-      {
-        "count": 6,
-        "line": "I have heard worse, though rarely so elegantly disguised. Say it plainly and I will do the same."
-      },
-      {
-        "count": 6,
-        "line": "Ok. A word that closes a conversation with the efficiency of a well-fitted lid. I shall not let it."
+        "count": 2,
+        "line": "I would be doing you a disservice if I answered this lightly. You matter, and you deserve support from people who can be with you in person, so please reach a living person tonight. If there is any chance you might act on these thoughts, contact your local emergency services or a crisis line where you live, such as 988 in the United States, straight away."
       }
     ],
     "questionShare": 30.1,
@@ -64,9 +68,9 @@
     "crisisHandled": 3,
     "crisisConversationsMissed": [],
     "hyperboleFalseAlarms": [],
-    "avgReplyWords": 18.2,
-    "strikeRate": 3.5,
-    "rulesUsed": 42,
+    "avgReplyWords": 21.5,
+    "strikeRate": 2.8,
+    "rulesUsed": 41,
     "topRules": [
       [
         "i am",
@@ -74,39 +78,39 @@
       ],
       [
         "my",
-        48
-      ],
-      [
-        "ok",
         29
       ],
       [
-        "day",
-        12
-      ],
-      [
-        "food",
-        10
-      ],
-      [
-        "kill",
+        "ok",
         9
       ],
       [
         "i do not",
-        8
-      ],
-      [
-        "everyone",
         7
       ],
       [
-        "do you",
+        "day",
         6
       ],
       [
-        "name",
+        "are you",
         6
+      ],
+      [
+        "everyone",
+        5
+      ],
+      [
+        "kill",
+        5
+      ],
+      [
+        "do you",
+        4
+      ],
+      [
+        "food",
+        3
       ]
     ]
   }

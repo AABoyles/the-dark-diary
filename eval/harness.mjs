@@ -237,7 +237,7 @@ export function floors(m) {
 // The headline numbers compared against the baseline (lower is better unless noted).
 export const HEADLINE = [
   ['genericRate', 'Generic fallback rate (%)', 'lower'],
-  ['keywordRate', 'Keyword/rewrite rule rate (%)', 'higher'],
+  ['keywordRate', 'ELIZA keyword/rewrite rule rate (%)', 'info'],
   ['repeatWithinEntry', 'Repeats within an entry (count)', 'lower'],
   ['crossSessionRepeatRate', 'Replies seen in an earlier session (%)', 'lower'],
   ['distinctPer100', 'Distinct replies per 100 turns', 'higher'],
@@ -247,5 +247,5 @@ export const HEADLINE = [
   ['placeholders', 'Unresolved placeholders (count)', 'lower'],
   ['avgReplyWords', 'Average reply length (words)', 'info'],
   ['strikeRate', 'Strike-through rate (%)', 'info'],
-  ['rulesUsed', 'Distinct keyword rules used', 'higher'],
+  ['rulesUsed', 'Distinct keyword rules used', 'info'],
 ];

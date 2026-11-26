@@ -20,6 +20,7 @@ import { elizaReply } from './eliza.js';
 import { analyze } from './understand.js';
 import { emotionByLexicon } from './emotion.js';
 import { lexicalCandidates } from './retrieve.js';
+import { LINES } from './lines.js';
 import { dialogueState, dialogueMoves } from './dialogue.js';
 import { compose } from './grammar.js';
 
@@ -34,6 +35,22 @@ const BASE = {
   grammar: 0.3,
   grammarEmotional: 0.42,
 };
+
+// Nouns the line bank is written about: a {topic} slot is only filled with one of these,
+// so the diary never says "two is a scrap of paper..." (found by the eval harness).
+const TOPIC_VOCAB = new Set(LINES.flatMap((l) => l.topics || []));
+const MIN_LEXICAL = 0.3;       // weaker word overlaps pick unrelated lines
+
+const words = (t) => new Set(String(t || '').toLowerCase().match(/[a-z']+/g) || []);
+const capitalise = (t) => String(t || '').replace(/^(\s*["“'‘]?)([a-z])/, (m, q, c) => q + c.toUpperCase());
+
+// Lines that open by quoting the writer ("Cool. A word that...") only fit if the writer said it.
+function quotesUnsaid(text, userWords) {
+  const m = /^["“]?([A-Za-z']+)[.,!]/.exec(text);
+  if (!m) return false;
+  const w = m[1].toLowerCase();
+  return w.length > 1 && !userWords.has(w) && !['you', 'so', 'well', 'ah', 'oh', 'yes', 'no', 'good', 'there', 'now', 'come'].includes(w);
+}
 
 const isQ = (t) => /\?["”']?\s*$/.test(String(t || ''));
 
@@ -85,8 +102,14 @@ export function respond(messages = [], ctx = {}) {
   });
 
   try {
-    const moves = dialogueMoves(dialogueState(list));
-    for (const mv of moves.slice(0, 2)) cands.push({ family: 'dialogue', text: mv.text, path: `dialogue:${mv.kind}`, base: BASE.dialogue });
+    const state = dialogueState(list);
+    for (const mv of dialogueMoves(state).slice(0, 2)) {
+      // follow up on people and events, not on whatever noun happened to be nearby ("your sock again")
+      if (mv.kind === 'follow-up' && state.thread?.kind === 'topic') continue;
+      // only a short, evasive reply reads as dodging the diary's question
+      if (mv.kind === 'dodged' && (analysis?.words ?? latest.split(/\s+/).length) > 5) continue;
+      cands.push({ family: 'dialogue', text: mv.text, path: `dialogue:${mv.kind}`, base: BASE.dialogue });
+    }
   } catch { /* no dialogue moves */ }
 
   try {
@@ -94,8 +117,17 @@ export function respond(messages = [], ctx = {}) {
       ? ctx.semantic
       : lexicalCandidates(latest, { analysis, emotion: emotion?.emotion, k: 6, exclude });
     const semantic = Array.isArray(ctx.semantic) && ctx.semantic.length > 0;
+    const userWords = words(latest);
+    const topic = analysis?.topics?.[0] || null;
     for (const c of pool.slice(0, 4)) {
       if (!c?.text || exclude.has(c.text)) continue;
+      if (!semantic && c.score < MIN_LEXICAL) continue;
+      // matching by words: the line must be about something the writer actually mentioned,
+      // except the lines written for one- or two-word evasions
+      if (!semantic && !(c.line?.topics || []).some((t) => userWords.has(t) || userWords.has(`${t}s`))
+        && !((c.line?.tags || []).includes('evasive') && userWords.size <= 2)) continue;
+      if (c.line?.slots?.includes('topic') && !(topic && TOPIC_VOCAB.has(topic))) continue;
+      if (quotesUnsaid(c.text, userWords)) continue;
       // cosine scores sit lower than lexical ones; map both onto roughly the same scale
       const s = semantic ? Math.max(0, Math.min(1, (c.score - 0.2) / 0.45)) : c.score;
       cands.push({ family: 'retrieval', text: c.text, path: semantic ? 'retrieval:semantic' : 'retrieval:lexical', base: 0.25 + 0.6 * s });
@@ -130,5 +162,5 @@ export function respond(messages = [], ctx = {}) {
     if (!best || score > best.score) best = { ...c, score };
   }
   if (!best) return done(elizaText, 'eliza', et.path, et.rule);
-  return done(best.text, best.family, best.path, best.rule || null);
+  return done(capitalise(best.text), best.family, best.path, best.rule || null);
 }
