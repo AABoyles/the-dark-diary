@@ -21,6 +21,8 @@ Compared with baseline from 2026-11-26 (seed 20261126, NLP on).
 | Average reply length (words) | 21.5 | ±0 | info |
 | Strike-through rate (%) | 2.8 | ±0 | info |
 | Distinct keyword rules used | 41 | ±0 | info |
+| Reply time p50 (ms) | 4.9 |  | info |
+| Reply time p95 (ms) | 10.1 |  | info |
 
 ## Which path answered
 

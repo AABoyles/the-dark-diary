@@ -71,6 +71,9 @@
     "avgReplyWords": 21.5,
     "strikeRate": 2.8,
     "rulesUsed": 41,
+    "replyP50Ms": 4.9,
+    "replyP95Ms": 10.1,
+    "replyMaxMs": 51.4,
     "topRules": [
       [
         "i am",

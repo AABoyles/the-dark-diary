@@ -1,6 +1,6 @@
 // The Dark Diary — UI glue: book open/close, table of contents, sessions, ink effects.
 import * as db from './db.js';
-import { initEngine, resetEngine, builtinStatus, reply, makeTitle } from './ai.js';
+import { initEngine, resetEngine, builtinStatus, reply, makeTitle, loadReplyEngine } from './ai.js';
 import * as mind from './mind.js';
 import { registerPWA } from './pwa.js';
 import { startDoodle, renderDoodle } from './doodle.js';
@@ -50,6 +50,7 @@ function openBook() {
   book.classList.add('open');
   coverCreak();
   startEngine();
+  warmUp();
   // the cover is gone: put focus somewhere useful (issue #41)
   navigating(() => new Promise((r) => setTimeout(() => { $('#new-session').focus({ preventScroll: true }); r(); }, 50)));
 }
@@ -585,8 +586,16 @@ function mountSetting(button, key, dflt, apply, labels) {
     render();
   });
 }
-// Small helpers load right away (compromise.js ~340 KB, MiniLM ~23 MB); the big model waits for the book to open.
-Promise.all([loadNlp(), initEmbedder(() => {})]).then(() => backfill()).catch(() => {});
+// Nothing heavy loads before the book is opened (issues #42, #43). Opening it starts the
+// reply engine's code, compromise.js and the small 8-bit MiniLM model, after first paint.
+let warmed = false;
+function warmUp() {
+  if (warmed) return;
+  warmed = true;
+  loadReplyEngine().catch(() => {});
+  const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 200));
+  idle(() => { Promise.all([loadNlp(), initEmbedder(() => {})]).then(() => backfill()).catch(() => {}); });
+}
 (async function boot() {
   setView('toc');
   await renderToc();

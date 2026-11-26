@@ -1492,10 +1492,14 @@ function normalize(raw) {
   return t.replace(/\s+/g, ' ').trim();
 }
 
+// A sentence longer than this is read only in part: replies never echo more than
+// eight words of it, and matching very long runs is wasted work (issue #46).
+const MAX_SENTENCE_WORDS = 48;
+
 function splitSentences(normalized) {
   return normalized
     .split(/[.!?;]+/)
-    .map((s) => s.trim().split(' ').filter(Boolean))
+    .map((s) => s.trim().split(' ').filter(Boolean).slice(0, MAX_SENTENCE_WORDS))
     .filter((words) => words.length > 0);
 }
 
@@ -1514,32 +1518,37 @@ function compile(pattern) {
 
 // Match tokens against words; returns captures (one per * or @) or null.
 // Stars match shortest-first, so the first capture is as small as possible.
+// Captures are kept as index ranges and joined only on success, and failed
+// (token, word) states are remembered, so long input stays polynomial and
+// cheap instead of exploding (issue #46: 8,000 characters took ~0.6 s).
 function matchTokens(tokens, words) {
   const caps = [];
+  const failed = new Set();
   const rec = (ti, wi) => {
     if (ti === tokens.length) return wi === words.length;
+    const key = ti * 100003 + wi;
+    if (failed.has(key)) return false;
     const tok = tokens[ti];
+    let ok = false;
     if (tok.star) {
-      for (let k = wi; k <= words.length; k++) {
-        caps.push(words.slice(wi, k).join(' '));
-        if (rec(ti + 1, k)) return true;
-        caps.pop();
+      for (let k = wi; k <= words.length && !ok; k++) {
+        caps.push([wi, k]);
+        if (rec(ti + 1, k)) ok = true;
+        else caps.pop();
       }
-      return false;
+    } else if (wi < words.length) {
+      if (tok.word !== undefined) {
+        ok = words[wi] === tok.word && rec(ti + 1, wi + 1);
+      } else if ((SYNONYMS[tok.syn] || []).includes(words[wi])) {
+        caps.push([wi, wi + 1]);
+        ok = rec(ti + 1, wi + 1);
+        if (!ok) caps.pop();
+      }
     }
-    if (wi >= words.length) return false;
-    if (tok.word !== undefined) {
-      if (words[wi] !== tok.word) return false;
-      return rec(ti + 1, wi + 1);
-    }
-    const members = SYNONYMS[tok.syn] || [];
-    if (!members.includes(words[wi])) return false;
-    caps.push(words[wi]);
-    if (rec(ti + 1, wi + 1)) return true;
-    caps.pop();
-    return false;
+    if (!ok) failed.add(key);
+    return ok;
   };
-  return rec(0, 0) ? caps : null;
+  return rec(0, 0) ? caps.map(([a, b]) => words.slice(a, b).join(' ')) : null;
 }
 
 function reflectWords(words) {

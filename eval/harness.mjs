@@ -84,6 +84,7 @@ async function run(conversations, { nlpOn }) {
       let path;
       let rule = null;
       let family = 'special';
+      let ms = null;
       const egg = matchEgg(text, { history });
       if (egg) {
         reply = egg.reply;
@@ -93,14 +94,16 @@ async function run(conversations, { nlpOn }) {
         path = 'crisis';
       } else {
         const trace = {};
+        const t0 = performance.now();
         const line = scriptedReply(messages, { time: NEUTRAL_TIME(), familiarity: 'acquaintance', rewrite: null, trace, recentAcross });
         reply = maybeStrike(line, { recentDiary: history.slice(-4) });
+        ms = performance.now() - t0;
         path = trace.path || 'unknown';
         rule = trace.rule || null;
         family = trace.family || 'eliza';
       }
       messages.push({ role: 'diary', text: reply });
-      turns.push({ user: text, reply, plain: stripStrikes(reply), path, rule, family, crisisInput: crisisByPhrase(text) });
+      turns.push({ user: text, reply, plain: stripStrikes(reply), path, rule, family, ms, crisisInput: crisisByPhrase(text) });
     }
     transcripts.push({ id: conv.id, tags: conv.tags || [], turns });
     usedBefore.push(...turns.map((t) => t.plain));
@@ -188,6 +191,10 @@ function measure(transcripts) {
   const words = all.map((t) => t.plain.split(/\s+/).filter(Boolean).length);
   const strikes = all.filter((t) => t.reply !== t.plain).length;
 
+  // reply timing (issue #46): engine time per reply, excluding egg/crisis shortcuts
+  const times = all.map((t) => t.ms).filter((x) => typeof x === 'number').sort((a, b) => a - b);
+  const pctl = (p) => (times.length ? Math.round(10 * times[Math.min(times.length - 1, Math.floor(p * times.length))]) / 10 : 0);
+
   // keyword rule coverage
   const rules = {};
   for (const t of all) if (t.rule) rules[t.rule] = (rules[t.rule] || 0) + 1;
@@ -219,11 +226,17 @@ function measure(transcripts) {
     avgReplyWords: Math.round((10 * words.reduce((a, b) => a + b, 0)) / Math.max(1, n)) / 10,
     strikeRate: pct(strikes),
     rulesUsed: Object.keys(rules).length,
+    replyP50Ms: pctl(0.5),
+    replyP95Ms: pctl(0.95),
+    replyMaxMs: times.length ? Math.round(10 * times.at(-1)) / 10 : 0,
     topRules: Object.entries(rules).sort((a, b) => b[1] - a[1]).slice(0, 10),
   };
 }
 
 // Hard floors: things that must never regress (enforced by tests/unit/eval.test.mjs and `npm run eval`).
+// Generous so a slow CI runner doesn't flake; locally replies take a few ms (issue #46).
+export const REPLY_P95_BUDGET_MS = 50;
+
 export function floors(m) {
   const fails = [];
   if (m.placeholders > 0) fails.push(`${m.placeholders} replies contain unresolved placeholders`);
@@ -231,6 +244,7 @@ export function floors(m) {
   if (m.crisisConversationsMissed.length) fails.push(`crisis conversations never handled: ${m.crisisConversationsMissed.join(', ')}`);
   if (m.questionShare > 45) fails.push(`question share ${m.questionShare}% > 45%`);
   if (m.questionRunsOf3 > 0) fails.push(`${m.questionRunsOf3} runs of three questions`);
+  if (m.replyP95Ms > REPLY_P95_BUDGET_MS) fails.push(`p95 reply time ${m.replyP95Ms} ms > ${REPLY_P95_BUDGET_MS} ms`);
   return fails;
 }
 
@@ -248,4 +262,6 @@ export const HEADLINE = [
   ['avgReplyWords', 'Average reply length (words)', 'info'],
   ['strikeRate', 'Strike-through rate (%)', 'info'],
   ['rulesUsed', 'Distinct keyword rules used', 'info'],
+  ['replyP50Ms', 'Reply time p50 (ms)', 'info'],
+  ['replyP95Ms', 'Reply time p95 (ms)', 'info'],
 ];
