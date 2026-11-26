@@ -3,6 +3,9 @@ import * as db from './db.js';
 import { initEngine, reply, makeTitle } from './ai.js';
 import { registerPWA } from './pwa.js';
 import { startDoodle } from './doodle.js';
+import { loadNlp } from './nlp.js';
+import { initEmbedder } from './embed.js';
+import { remember, recollect, backfill } from './memory.js';
 
 const $ = (s) => document.querySelector(s);
 const book = $('#book');
@@ -195,6 +198,7 @@ async function submit() {
   follow();
   await db.saveSession(session);
 
+  remember(session.id, text).catch(() => {}); // learn from it for later entries
   const pending = document.createElement('div');
   pending.className = 'entry diary pending';
   entriesEl.appendChild(pending);
@@ -204,7 +208,9 @@ async function submit() {
   // Give the pen a moment to doodle, even when the answer is instant.
   const minWait = new Promise((r) => setTimeout(r, 1500));
   let answer;
-  try { [answer] = await Promise.all([reply(session.messages), minWait]); }
+  let recollections = [];
+  try { recollections = await recollect(session.id, text); } catch { /* memory is optional */ }
+  try { [answer] = await Promise.all([reply(session.messages, { recollections }), minWait]); }
   catch { answer = 'The diary declines to answer. How very like you to have asked.'; }
 
   stopDoodle();
@@ -249,6 +255,8 @@ $('#delete-session').addEventListener('click', async () => {
 
 // ---------- Boot ----------
 registerPWA();
+// Small helpers load right away (compromise.js ~340 KB, MiniLM ~23 MB); the big model waits for the book to open.
+Promise.all([loadNlp(), initEmbedder(() => {})]).then(() => backfill()).catch(() => {});
 (async function boot() {
   setView('toc');
   await renderToc();

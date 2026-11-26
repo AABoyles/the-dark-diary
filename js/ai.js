@@ -8,7 +8,7 @@
  *
  * Exports:
  *   initEngine(onStatus) -> Promise<{ backend }>   boots the engine once (cached)
- *   reply(messages)      -> Promise<string>        the diary's next line
+ *   reply(messages, ctx) -> Promise<string>        the diary's next line (ctx.recollections: memories from earlier sessions)
  *   makeTitle(messages)  -> Promise<string>        a short insulting entry title
  *   getBackend()         -> 'prompt-api' | 'transformers' | 'scripted' | null
  *
@@ -16,11 +16,14 @@
  */
 
 import { scriptedReply, scriptedTitle } from './fallback.js';
+import { createLlm } from './llm-client.js';
+import { matchIntent } from './embed.js';
+import { memoryNote } from './memory.js';
 
 // Gemma 4 E2B (instruct) as ONNX. Needs transformers.js v4+ (v3 does not know the architecture).
 // Swap for any other small instruct model if desired.
 const FALLBACK_MODEL_ID = 'onnx-community/gemma-4-E2B-it-ONNX';
-const TRANSFORMERS_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2';
+// The model runs in a Web Worker (js/workers/llm-worker.js) so generation never blocks the UI.
 
 const HISTORY_LIMIT = 12;
 const REPLY_MAX_TOKENS = 90;
@@ -62,7 +65,7 @@ const TITLE_INSTRUCTION = 'Write the title for this entry now. Output only the t
 // ---------------------------------------------------------------------------
 
 let backend = null;          // resolved backend name, or null until booted
-let engine = null;           // { backend, p? , generator? }
+let engine = null;           // { backend, p? , llm? }
 let enginePromise = null;    // single shared boot promise
 const statusListeners = new Set();
 let queue = Promise.resolve(); // serializes reply/makeTitle calls
@@ -121,8 +124,8 @@ async function bootEngine() {
 
   // 2. transformers.js with a small instruct model.
   try {
-    const generator = await loadTransformers();
-    return { backend: 'transformers', generator };
+    const llm = await loadTransformers();
+    return { backend: 'transformers', llm };
   } catch (err) {
     console.warn('[ai] transformers.js could not load a model.', err);
   }
@@ -175,8 +178,7 @@ function sessionOptions(p, persona, history, extra = {}) {
 }
 
 async function loadTransformers() {
-  const tj = await import(TRANSFORMERS_URL);
-  const progress_callback = (ev) => {
+  const onProgress = (ev) => {
     if (ev?.status === 'progress' && Number.isFinite(ev.progress)) {
       emit(`The diary stirs… ${Math.round(ev.progress)}%`);
     } else if (ev?.status === 'initiate') {
@@ -184,36 +186,17 @@ async function loadTransformers() {
     }
   };
 
-  // Preferred: the standard text-generation pipeline.
-  // Fallback: drive the multimodal Gemma 4 class directly with text-only input.
-  const load = async (opts) => {
-    try {
-      return await tj.pipeline('text-generation', FALLBACK_MODEL_ID, { ...opts, progress_callback });
-    } catch (err) {
-      console.warn('[ai] pipeline load failed, trying Gemma4ForConditionalGeneration.', err);
-      const tokenizer = await tj.AutoTokenizer.from_pretrained(FALLBACK_MODEL_ID, { progress_callback });
-      const model = await tj.Gemma4ForConditionalGeneration.from_pretrained(FALLBACK_MODEL_ID, { ...opts, progress_callback });
-      return async (chat, gen) => {
-        const inputs = tokenizer.apply_chat_template(chat, { add_generation_prompt: true, return_dict: true });
-        const out = await model.generate({ ...inputs, ...gen });
-        const start = inputs.input_ids.dims.at(-1);
-        const [text] = tokenizer.batch_decode(out.slice(null, [start, null]), { skip_special_tokens: true });
-        return [{ generated_text: [...chat, { role: 'assistant', content: text }] }];
-      };
-    }
-  };
-
   const hasGpu = typeof navigator !== 'undefined' && !!navigator.gpu;
   if (hasGpu) {
     try {
       emit('Your graphics card has been summoned…');
-      return await load({ device: 'webgpu', dtype: 'q4f16' });
+      return await createLlm({ modelId: FALLBACK_MODEL_ID, device: 'webgpu', dtype: 'q4f16', onProgress });
     } catch (err) {
       console.warn('[ai] WebGPU load failed, retrying on WASM.', err);
       emit('The graphics card refused. Taking the slower road…');
     }
   }
-  return await load({ device: 'wasm', dtype: 'q4' });
+  return await createLlm({ modelId: FALLBACK_MODEL_ID, device: 'wasm', dtype: 'q4', onProgress });
 }
 
 // ---------------------------------------------------------------------------
@@ -262,16 +245,14 @@ async function generateRaw(persona, messages, instruction, maxTokens) {
       ...history.map(toTurn),
       { role: 'user', content: prompt },
     ];
-    const out = await eng.generator(chat, {
+    const text = await eng.llm.generate(chat, {
       max_new_tokens: maxTokens,
       do_sample: true,
       temperature: 0.9,
       top_p: 0.92,
       repetition_penalty: 1.1,
     });
-    const generated = out?.[0]?.generated_text;
-    const lastTurn = Array.isArray(generated) ? generated.at(-1) : null;
-    return typeof lastTurn?.content === 'string' ? lastTurn.content : '';
+    return typeof text === 'string' ? text : '';
   }
 
   throw new Error('No model backend available.');
@@ -366,22 +347,34 @@ function cleanTitle(text) {
 /**
  * The diary's next line, given the transcript (the last message is the user's).
  */
-export function reply(messages) {
+export function reply(messages, ctx = {}) {
   // While the model is still loading (weights downloading, warming up) answer
   // at once with the scripted ELIZA-style engine instead of making the user wait.
-  if (!engine) return Promise.resolve(scriptedReply(messages));
+  if (!engine) return scripted(messages, ctx);
   return enqueue(async () => {
     const eng = await ensureEngine();
     if (eng.backend !== 'scripted') {
       try {
-        const out = clean(await generateRaw(PERSONA, messages, '', REPLY_MAX_TOKENS));
+        const out = clean(await generateRaw(PERSONA + memoryNote(ctx.recollections), messages, '', REPLY_MAX_TOKENS));
         if (out) return out;
       } catch (err) {
         console.warn('[ai] Generation failed, using a scripted line.', err);
       }
     }
-    return scriptedReply(messages);
+    return scripted(messages, ctx);
   });
+}
+
+/**
+ * The ELIZA-style engine, helped by the small embedding model: if the user's
+ * words are slangy or unusual, map them to the nearest canonical intent first.
+ * matchIntent resolves to null at once when the embedder isn't ready.
+ */
+async function scripted(messages, ctx) {
+  const last = [...messages].reverse().find((m) => m.role === 'user');
+  let rewrite = null;
+  try { rewrite = (await matchIntent(last?.text || ''))?.canonical || null; } catch { /* ignore */ }
+  return scriptedReply(messages, { ...ctx, rewrite });
 }
 
 /**
