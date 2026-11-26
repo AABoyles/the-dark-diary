@@ -367,6 +367,9 @@ function cleanTitle(text) {
  * The diary's next line, given the transcript (the last message is the user's).
  */
 export function reply(messages) {
+  // While the model is still loading (weights downloading, warming up) answer
+  // at once with the scripted ELIZA-style engine instead of making the user wait.
+  if (!engine) return Promise.resolve(scriptedReply(messages));
   return enqueue(async () => {
     const eng = await ensureEngine();
     if (eng.backend !== 'scripted') {
@@ -385,6 +388,7 @@ export function reply(messages) {
  * A short, grim or passive-aggressive title for the entry.
  */
 export function makeTitle(messages) {
+  if (!engine) return Promise.resolve(scriptedTitle(messages));
   return enqueue(async () => {
     const eng = await ensureEngine();
     if (eng.backend !== 'scripted') {

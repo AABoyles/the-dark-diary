@@ -11,7 +11,7 @@
    06. Table of contents (left page)
    07. Session page (right page)
    08. Entries & ink
-   09. Ink effects (absorb, writing, pending)
+   09. Ink effects (writing, pending doodle)
    10. Entry form (handwriting input)
    11. Empty state & utility controls
    12. Opening motion
@@ -628,12 +628,10 @@ body {
 .entry.user .ink {
   color: var(--ink-user);
   text-shadow: 0 0 0.6px rgba(29, 35, 51, 0.55);
-  transform-origin: 0 50%;
 }
 
 /* The diary's reply: spindly Pinyon Script in sepia-red-black, wet ink */
 .entry.diary {
-  padding-left: 2.2em;
   font-family: 'Pinyon Script', cursive;
   font-size: clamp(20px, 2.1vw, 26px);
   letter-spacing: 0.03em;
@@ -662,18 +660,6 @@ body {
    09. Ink effects
    ------------------------------------------------------------------------- */
 
-/* The user's ink sinks into the page after it is sent */
-.entry.user.absorbing .ink {
-  animation: inkAbsorb 2.2s var(--ease-soft) forwards;
-}
-
-/* Final state: identical to the end of the absorb animation, no motion */
-.entry.user.absorbed .ink {
-  opacity: 0.28;
-  filter: blur(1.5px);
-  transform: scale(0.97);
-}
-
 /* The diary's reply writes itself, one character at a time */
 .entry.diary .ink.writing .ch {
   opacity: 0;
@@ -690,29 +676,22 @@ body {
   animation: none;
 }
 
-/* Thinking: three slow-pulsing ink dots while the reply is pending */
-.entry.diary.pending .ink::after {
-  content: "";
-  display: inline-block;
-  width: 2.6em;
-  height: 0.5em;
-  margin-left: 0.15em;
-  vertical-align: middle;
-  background: radial-gradient(circle, var(--ink-diary) 0 0.09em, transparent 0.12em) 0 50% / 0.87em 100% repeat-x;
-  animation: inkDots 2.4s ease-in-out infinite;
+/* Pending reply: a pen doodles on the page (see js/doodle.js) */
+.entry.diary.pending .doodle {
+  display: block;
+  height: calc(var(--line) * 2.6);
+  width: auto;
+  aspect-ratio: 3 / 1;
+  max-width: 100%;
+  overflow: visible;
 }
 
-@keyframes inkAbsorb {
-  from {
-    opacity: 1;
-    filter: blur(0);
-    transform: scale(1);
-  }
-  to {
-    opacity: 0.28;
-    filter: blur(1.5px);
-    transform: scale(0.97);
-  }
+.doodle path {
+  fill: none;
+  stroke: var(--ink-diary);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 0.6px rgba(58, 13, 13, 0.5));
 }
 
 @keyframes inkIn {
@@ -727,12 +706,6 @@ body {
     top: 0;
   }
 }
-
-@keyframes inkDots {
-  0%, 100% { opacity: 0.18; }
-  50%      { opacity: 0.85; }
-}
-
 
 /* -------------------------------------------------------------------------
    10. Entry form (handwriting input)
@@ -1103,19 +1076,5 @@ body {
     filter: none;
     top: 0;
     animation: none;
-  }
-
-  /* Absorbed ink rests in its final state */
-  .entry.user.absorbing .ink {
-    animation: none;
-    opacity: 0.28;
-    filter: blur(1.5px);
-    transform: scale(0.97);
-  }
-
-  /* Thinking dots are static but still visible */
-  .entry.diary.pending .ink::after {
-    animation: none;
-    opacity: 0.6;
   }
 }
