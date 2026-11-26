@@ -11,6 +11,8 @@
 // reflection of captured fragments -> reassembly templates, chosen to avoid
 // repeats and to balance questions against statements.
 
+import { reflectClause, nlpReady } from './nlp.js';
+
 // ---------------------------------------------------------------------------
 // Vocabulary tables
 // ---------------------------------------------------------------------------
@@ -652,6 +654,16 @@ const RULES = [
       ask('Not (2)? Then what are you, if not that? The question seems to be standing just behind you.'),
       say('You say you are not (2), which means you have been thinking about it rather hard.'),
       ask('Not (2) at all, or not in the way others have made you believe? Tell me the difference.'),
+    ]},
+    { pat: '* i am @fear of *', reasmb: [
+      say('(2) of (3), you say. Fear with a particular address is at least honest about where it lives.'),
+      ask('(2) of (3). When did that fear first move into the house?'),
+    ]},
+    { pat: '* i am @sad of *', reasmb: [
+      say('(2) of (3), you say. Such an arrangement is rarely as temporary as it sounds.'),
+      ask('(2) of (3), and how long has the arrangement been going on?'),
+      say('(2), and of (3) besides. I suspect the second has been doing most of the damage.'),
+      ask('Is (3) truly the cause of being (2), or merely the easiest thing to blame?'),
     ]},
     { pat: '* i am @fear *', reasmb: [
       say('(2), you say. Fear is only attention with its coat buttoned up. Tell me what it is you are guarding against.'),
@@ -1416,16 +1428,34 @@ function reflectWords(words) {
   return words.map((w) => POST[w] || w);
 }
 
+// Captured fragments that must never be echoed back ("Ok is a fine thing to be").
+const FRAGMENT_STOP = new Set(['ok', 'okay', 'fine', 'nothing', 'idk', 'yes', 'no', 'maybe', 'sure', 'nah']);
+
+// True for a fragment too short, or made only of stoplisted words, to echo.
+function badFragment(frag) {
+  const s = String(frag || '').trim();
+  if (s.length < 2) return true;
+  const words = (s.toLowerCase().match(/[a-z']+/g) || []);
+  return words.length === 0 || words.every((w) => FRAGMENT_STOP.has(w));
+}
+
+// Second-person reflection of a captured fragment: the NLP helper when it is
+// ready, otherwise the word-by-word table.
+function reflectFragment(frag) {
+  const viaNlp = nlpReady() ? reflectClause(frag) : null;
+  if (viaNlp) return viaNlp;
+  return reflectWords(frag.split(' ').filter(Boolean)).map((w) => (w === 'i' ? 'I' : w)).join(' ');
+}
+
 // Fill (1), (2)... from captures. Returns null if a fragment is missing,
-// empty, or longer than eight words.
+// unfit to echo, or longer than eight words.
 function fill(template, caps) {
   let bad = false;
   const out = template.replace(/\((\d)\)/g, (_, d) => {
     const frag = caps[Number(d) - 1];
-    if (frag === undefined) { bad = true; return ''; }
-    const words = reflectWords(frag.split(' ').filter(Boolean));
-    if (words.length === 0 || words.length > 8) { bad = true; return ''; }
-    return words.map((w) => (w === 'i' ? 'I' : w)).join(' ');
+    if (frag === undefined || badFragment(frag)) { bad = true; return ''; }
+    if (frag.split(' ').filter(Boolean).length > 8) { bad = true; return ''; }
+    return reflectFragment(frag);
   });
   if (bad || /\(\d\)/.test(out)) return null;
   return out.replace(/\s+/g, ' ').trim();
@@ -1541,11 +1571,125 @@ function recall(earlier, ctx) {
   return null;
 }
 
+// Recollections from the user's earlier sessions, supplied through ctx.
+const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six'];
+
+// How long ago, in the diary's words. Never a raw number above six.
+function ageText(days) {
+  const d = Number.isFinite(days) ? Math.max(0, Math.floor(days)) : Infinity;
+  if (d === 0) return 'earlier today';
+  if (d === 1) return 'yesterday';
+  if (d <= 6) return `${NUMBER_WORDS[d]} days ago`;
+  if (d <= 13) return 'last week';
+  if (d <= 60) return 'some weeks ago';
+  return 'some time ago';
+}
+
+// Validated, most recent first. Anything malformed is dropped.
+function cleanRecollections(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const r of list) {
+    if (!r || typeof r !== 'object') continue;
+    const phrase = typeof r.phrase === 'string' ? r.phrase.replace(/\s+/g, ' ').trim() : '';
+    const topic = typeof r.topic === 'string' ? norm(r.topic) : '';
+    if (phrase.split(' ').length < 2 || !topic) continue;
+    const kind = ['person', 'place', 'thing', 'feeling', 'event'].includes(r.kind) ? r.kind : 'thing';
+    const daysAgo = Number.isFinite(r.daysAgo) ? Math.max(0, Math.floor(r.daysAgo)) : Infinity;
+    out.push({ phrase, topic, kind, daysAgo, relevant: r.relevant === true });
+  }
+  out.sort((a, b) => (b.relevant - a.relevant) || (a.daysAgo - b.daysAgo));
+  return out.slice(0, 20);
+}
+
+// Whether a topic word (or phrase) appears in a normalised text, allowing a plural.
+function mentionsTopic(normText, topic) {
+  const t = norm(topic);
+  if (!t) return false;
+  const padded = ` ${normText} `;
+  if (padded.includes(` ${t} `) || padded.includes(` ${t}s `)) return true;
+  return t.endsWith('s') && padded.includes(` ${t.slice(0, -1)} `);
+}
+
+// The recollected phrase in the diary's voice, lower-cased for mid-sentence use.
+function reflectPhrase(phrase) {
+  let text = nlpReady() ? reflectClause(phrase) : null;
+  if (!text) text = reflectWords(phrase.toLowerCase().split(' ').filter(Boolean)).join(' ');
+  text = text.replace(/[.!?;,:]+$/, '').trim();
+  if (!/^I\b/.test(text)) text = text.charAt(0).toLowerCase() + text.slice(1);
+  return text;
+}
+
+// The topic as the diary names it when it looks back.
+function topicPhrase(rec) {
+  if (rec.kind === 'feeling') return `being ${rec.topic}`;
+  if (rec.kind === 'place') return `the ${rec.topic}`;
+  if (rec.kind === 'person' && !SYNONYMS.family.includes(rec.topic)) {
+    return rec.topic.charAt(0).toUpperCase() + rec.topic.slice(1);
+  }
+  return `your ${rec.topic}`;
+}
+
+// Candidate lines that refer back to one recollection.
+function recollectionTemplates(rec) {
+  const when = ageText(rec.daysAgo);
+  const about = topicPhrase(rec);
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  return [
+    say(`You spoke of ${about} before, ${when}. It has not stopped echoing in these pages.`),
+    ask(`You spoke of ${about} before, ${when}. Has it grown heavier since, or have you only grown used to carrying it?`),
+    say(`${cap(when)}, you spoke of ${about}, and I did not forget it. Neither, I suspect, did you.`),
+    ask(`Does ${about} still sit where it did ${when}, or has something else taken its chair?`),
+  ];
+}
+
+// Candidate lines that bring up a recollection unprompted.
+function volunteerTemplates(rec) {
+  const when = ageText(rec.daysAgo);
+  const phrase = reflectPhrase(rec.phrase);
+  return [
+    say(`I have been thinking of what you told me ${when}: ${phrase}. I did not forget it, and neither, I suspect, did you.`),
+    ask(`I have been thinking of what you told me ${when}: ${phrase}. Was it said in earnest, or only to see how it sounded?`),
+  ];
+}
+
+// Refers back to a recollection the current message touches on, if it has not
+// already been quoted in this transcript.
+function recollectionReply(recs, ctx, currentNorm) {
+  const hit = recs.find((r) => (r.relevant || mentionsTopic(currentNorm, r.topic))
+    && !ctx.diaryNorms.some((d) => mentionsTopic(d, r.topic)));
+  if (!hit) return null;
+  return fromList(recollectionTemplates(hit), ctx);
+}
+
+// Brings up an earlier remark unprompted, on the no-keyword path.
+function volunteerRecollection(recs, ctx) {
+  const fresh = recs.filter((r) => !ctx.diaryNorms.some((d) => mentionsTopic(d, r.topic)));
+  if (fresh.length === 0) return null;
+  const pick = fresh[Math.floor(Math.random() * Math.min(fresh.length, 4))];
+  const cands = volunteerTemplates(pick).map((tpl) => ({ tpl, text: tpl.s }));
+  const chosen = choose(cands, ctx);
+  return chosen ? emit(chosen, ctx) : null;
+}
+
+// Keyword candidates: highest rank first, then earliest sentence and position.
+function scanKeywords(sentences) {
+  const candidates = [];
+  sentences.forEach((words, j) => {
+    for (const rule of RULES) {
+      const pos = keyPos(words, rule.key);
+      if (pos >= 0) candidates.push({ rule, j, pos });
+    }
+  });
+  candidates.sort((a, b) => (b.rule.rank - a.rule.rank) || (a.j - b.j) || (a.pos - b.pos));
+  return candidates;
+}
+
 // ---------------------------------------------------------------------------
 // Main entry
 // ---------------------------------------------------------------------------
 
-function reply(messages) {
+function reply(messages, ext) {
   const list = Array.isArray(messages) ? messages.filter((m) => m && typeof m === 'object') : [];
   const userTexts = list
     .filter((m) => m.role === 'user')
@@ -1571,8 +1715,14 @@ function reply(messages) {
 
   if (!norm(latest)) return fromList(EMPTY_LINES, ctx);
 
+  // Self-harm is checked first, on the original text and on any rewrite.
+  const rewrite = typeof ext.rewrite === 'string'
+    ? ext.rewrite.replace(/\s+/g, ' ').trim().slice(0, 240) : '';
   const lowered = latest.toLowerCase().replace(/['‘’`]/g, '');
-  if (SELF_HARM.test(lowered)) return fromList(SELF_HARM_LINES, ctx);
+  const loweredRewrite = rewrite.toLowerCase().replace(/['‘’`]/g, '');
+  if (SELF_HARM.test(lowered) || (loweredRewrite && SELF_HARM.test(loweredRewrite))) {
+    return fromList(SELF_HARM_LINES, ctx);
+  }
 
   const sentences = splitSentences(normalize(latest));
   if (sentences.length === 0) return fromList(EMPTY_LINES, ctx);
@@ -1583,28 +1733,44 @@ function reply(messages) {
     if (repeated) return repeated;
   }
 
-  // Keyword candidates: highest rank first, then earliest sentence and position.
-  const candidates = [];
-  sentences.forEach((words, j) => {
-    for (const rule of RULES) {
-      const pos = keyPos(words, rule.key);
-      if (pos >= 0) candidates.push({ rule, j, pos });
+  // A recollection the message touches on comes before the keyword rules.
+  const recs = cleanRecollections(ext.recollections);
+  const currentNorm = `${norm(latest)} ${norm(rewrite)}`;
+  if (recs.length) {
+    const remembered = recollectionReply(recs, ctx, currentNorm);
+    if (remembered) return remembered;
+  }
+
+  // The semantic rewrite stands in for the original only when the original
+  // matched no keyword rule above rank 1.
+  let pipeline = sentences;
+  let candidates = scanKeywords(sentences);
+  const bestRank = candidates.length ? candidates[0].rule.rank : 0;
+  if (rewrite && bestRank <= 1) {
+    const rewritten = splitSentences(normalize(rewrite));
+    if (rewritten.length) {
+      pipeline = rewritten;
+      candidates = scanKeywords(rewritten);
     }
-  });
-  candidates.sort((a, b) => (b.rule.rank - a.rule.rank) || (a.j - b.j) || (a.pos - b.pos));
+  }
 
   for (const c of candidates) {
     let rule = c.rule;
     for (let hops = 0; rule.goto && hops < 3; hops++) rule = RULE_BY_KEY[rule.goto];
     if (!rule) continue;
-    const words = sentences[c.j];
+    const words = pipeline[c.j];
     for (const decomp of rule.decomps) {
       const out = tryDecomp(decomp, words, ctx);
       if (out) return out;
     }
   }
 
-  // Nothing matched: sometimes recall an earlier remark, otherwise a catch-all.
+  // Nothing matched: sometimes volunteer a recollection, sometimes recall an
+  // earlier remark, otherwise a catch-all.
+  if (recs.length && Math.random() < 0.35) {
+    const volunteered = volunteerRecollection(recs, ctx);
+    if (volunteered) return volunteered;
+  }
   if (earlier.length && Math.random() < 0.6) {
     const remembered = recall(earlier, ctx);
     if (remembered) return remembered;
@@ -1616,13 +1782,18 @@ const FALLBACK_LINE = 'The diary is listening. Go on.';
 
 /**
  * Reply to a transcript in the diary's voice. Stateless: all memory and
- * pacing come from the messages passed in.
+ * pacing come from the messages and ctx passed in.
  * @param {Array<{role: 'user'|'diary', text: string}>} messages
+ * @param {{recollections?: Array<{phrase: string, topic: string, kind: string, daysAgo: number}>,
+ *          rewrite?: string|null}} [ctx]
+ *   recollections: the user's earlier remarks, from earlier sessions.
+ *   rewrite: a canonical first-person sentence from a semantic matcher, used
+ *   in place of the latest message when no keyword rule above rank 1 applies.
  * @returns {string}
  */
-export function elizaReply(messages = []) {
+export function elizaReply(messages = [], ctx = {}) {
   try {
-    return reply(messages) || FALLBACK_LINE;
+    return reply(messages, ctx && typeof ctx === 'object' ? ctx : {}) || FALLBACK_LINE;
   } catch (err) {
     return FALLBACK_LINE;
   }

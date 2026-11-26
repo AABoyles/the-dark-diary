@@ -7,11 +7,12 @@ import { elizaReply } from './eliza.js';
 /**
  * Reply to a transcript with a scripted line.
  * @param {Array<{role: 'user'|'diary', text: string}>} messages
+ * @param {object} [ctx] recollections and rewrite, passed through to elizaReply
  * @returns {string}
  */
-export function scriptedReply(messages = []) {
+export function scriptedReply(messages = [], ctx = {}) {
   try {
-    return elizaReply(messages);
+    return elizaReply(messages, ctx);
   } catch (err) {
     return 'The diary is listening. Go on.';
   }

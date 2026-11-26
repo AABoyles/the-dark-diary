@@ -109,12 +109,9 @@ export function reflectClause(text) {
         }
       } else if (pending && (pending === 'i' || pending === 'you') && BETWEEN.has(lower) === false) {
         // Third-person present forms (keeps, has, does) take the base form.
-        const tags = term.tags || [];
-        if (tags.includes('PresentTense') && !tags.includes('Gerund')) {
-          const conj = nlp(lower).verbs().conjugate()[0];
-          if (conj && conj.PresentTense === lower && conj.Infinitive && conj.Infinitive !== lower) {
-            rep = conj.Infinitive;
-          }
+        const conj = nlp(lower).verbs().conjugate()[0];
+        if (conj && conj.PresentTense === lower && conj.Infinitive && conj.Infinitive !== lower) {
+          rep = conj.Infinitive;
         }
       }
 
@@ -224,7 +221,7 @@ export function extractFacts(text) {
           const head = (m.toLowerCase().match(/[a-z']+/g) || []).pop();
           if (head && head !== 'am' && head !== 'feel') add(head, 'feeling');
         });
-        doc.places().out('array').forEach((p) => add(p.split(' ').pop(), 'place'));
+        doc.places().out('array').forEach((p) => add(p, 'place'));
       } catch (err) {
         // Fall through to the regex pass below.
       }
@@ -232,11 +229,9 @@ export function extractFacts(text) {
 
     // Regex pass: works without compromise, and tops up what it found.
     for (const m of lower.matchAll(/\bmy ((?:[a-z]+ ){0,2}[a-z]+)/g)) {
-      const parts = m[1].split(' ').filter((p) => !STOP_TOPIC.has(p));
-      const noun = parts[parts.length - 1];
-      if (noun && noun.length >= 3 && !/^(is|was|are|were|keeps?|has|had|does|did|says?|said)$/.test(noun)) {
-        add(noun, headNounKind(noun));
-      }
+      // The head noun is the first word after "my" that is not a stop word.
+      const noun = m[1].split(' ').find((p) => !STOP_TOPIC.has(p));
+      if (noun && noun.length >= 3) add(noun, headNounKind(noun));
     }
     for (const m of lower.matchAll(/\bi (?:am|feel|feels|felt|was)\s+(?:so |very |really |too |quite |always |still )?([a-z]+)/g)) {
       if (FEELINGS.has(m[1])) add(m[1], 'feeling');
