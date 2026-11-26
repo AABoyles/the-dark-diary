@@ -34,6 +34,14 @@ npm run test:e2e     # browser end-to-end tests against a local static server, ~
 
 Unit tests live in `tests/unit/`; end-to-end tests in `tests/e2e/` run offline (CDN and Hugging Face requests are blocked, so the app runs on its scripted engine; model streaming is tested with a stand-in client). Both run in CI on every pull request (`.github/workflows/test.yml`). The site itself still has no build step and no runtime dependencies.
 
+## Measuring rendering performance
+
+```sh
+NODE_PATH=$(npm root -g) node scripts/measure-perf.mjs . --out perf.json
+```
+
+Measures idle repaints (the candle), DOM size of a 40-exchange entry, page-turn and typing cost at 4x CPU throttle, and reply writing. `tests/e2e/perf.test.mjs` enforces budgets in CI.
+
 ## Measuring the fallback engine
 
 ```sh

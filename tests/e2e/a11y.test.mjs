@@ -464,7 +464,10 @@ test('Candle off stops the candle flicker', { timeout: 120000 }, async () => {
     });
     assert.equal(off, true, '#candle is off (class "off", hidden or removed)');
 
-    const sample = () => page.evaluate(() => document.getElementById('candle')?.style.getPropertyValue('--candle-intensity') ?? '');
+    const sample = () => page.evaluate(() => {
+      const glow = document.querySelector('#candle .candle-glow');
+      return glow ? getComputedStyle(glow).opacity : '';
+    });
     const first = await sample();
     await page.waitForTimeout(1500);
     assert.equal(await sample(), first, 'the candle intensity no longer changes');

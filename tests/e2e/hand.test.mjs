@@ -36,7 +36,7 @@ const readHand = (page, sel) => page.evaluate((s) => {
   ]);
 }, sel);
 
-test('renderInk writes one letter per non-space character, each with its own hand', { timeout: 30000 }, async () => {
+test('renderInk writes one span per word, each with its own hand, and no letter spans (issue #45)', { timeout: 30000 }, async () => {
   const page = await handPage();
   const result = await page.evaluate(async () => {
     const { renderInk } = await import('./js/ink.js');
@@ -45,20 +45,24 @@ test('renderInk writes one letter per non-space character, each with its own han
     p.className = 'ink';
     document.body.appendChild(p);
     renderInk(p, text, { seed: 4242 });
-    const chars = [...p.querySelectorAll('.ch')];
-    const styled = chars.every((c) => /deg$/.test(c.style.getPropertyValue('--rot'))
+    const words = [...p.querySelectorAll('.w')];
+    const styled = words.every((c) => /deg$/.test(c.style.getPropertyValue('--rot'))
       && /em$/.test(c.style.getPropertyValue('--dy'))
       && c.style.getPropertyValue('--w') !== '');
     return {
-      count: chars.length,
-      expected: text.replace(/ /g, '').length,
+      count: words.length,
+      expected: text.split(' ').length,
+      letters: p.querySelectorAll('.ch').length,
+      oneTextNode: words.every((w) => w.childNodes.length === 1 && w.firstChild.nodeType === 3),
       styled,
       text: p.textContent,
       spaces: p.childNodes.length > 0,
     };
   });
   assert.equal(result.count, result.expected);
-  assert.ok(result.styled, 'every letter has --rot, --dy and --w');
+  assert.equal(result.letters, 0, 'settled text has no per-letter spans');
+  assert.ok(result.oneTextNode, 'each word is a single text node');
+  assert.ok(result.styled, 'every word has --rot, --dy and --w');
   assert.equal(result.text, 'Washing blood from a silk shirt.');
   assert.deepEqual(page.errors, []);
   await page.context().close();
@@ -72,7 +76,7 @@ test('the same seed gives the same hand, and different text gives a different on
       const p = document.createElement('p');
       document.body.appendChild(p);
       renderInk(p, text, seed === undefined ? {} : { seed });
-      return [...p.querySelectorAll('.ch')].map((c) => c.getAttribute('style'));
+      return [...p.querySelectorAll('.w')].map((c) => c.getAttribute('style'));
     };
     return {
       same: JSON.stringify(make('Hold the door.', 77)) === JSON.stringify(make('Hold the door.', 77)),
@@ -83,13 +87,13 @@ test('the same seed gives the same hand, and different text gives a different on
     };
   });
   assert.equal(result.same, true);
-  assert.equal(result.otherSeed, false, 'a different seed should give different letters');
+  assert.equal(result.otherSeed, false, 'a different seed should give different words');
   assert.equal(result.otherText, false, 'different text, different hand');
   assert.equal(result.defaultStable, true, 'without a seed, the seed comes from the text');
   await page.context().close();
 });
 
-test('letters keep their hand from streaming to the final render', { timeout: 30000 }, async () => {
+test('words keep their hand from streaming to the final render, and letter spans collapse', { timeout: 30000 }, async () => {
   const page = await handPage();
   const result = await page.evaluate(async () => {
     const { InkWriter } = await import('./js/ink.js');
@@ -104,17 +108,18 @@ test('letters keep their hand from streaming to the final render', { timeout: 30
       const check = () => (w.queue.length === 0 ? resolve() : setTimeout(check, 2));
       check();
     });
-    const before = [...p.querySelectorAll('.ch')].map((c) => [
+    const words = () => [...p.querySelectorAll('.w')].map((c) => [
       c.textContent, c.style.getPropertyValue('--rot'), c.style.getPropertyValue('--dy'), c.style.getPropertyValue('--w'),
     ]);
+    const before = words();
+    const lettersWhileWriting = p.querySelectorAll('.ch').length;
     await w.finish(final);
-    const after = [...p.querySelectorAll('.ch')].map((c) => [
-      c.textContent, c.style.getPropertyValue('--rot'), c.style.getPropertyValue('--dy'), c.style.getPropertyValue('--w'),
-    ]);
-    return { before, after, classes: p.className };
+    return { before, after: words(), lettersWhileWriting, lettersAfter: p.querySelectorAll('.ch').length, classes: p.className };
   });
-  assert.ok(result.before.length > 40);
+  assert.ok(result.before.length >= 10);
   assert.deepEqual(result.after, result.before);
+  assert.ok(result.lettersWhileWriting > 40, 'letters are spans while being written');
+  assert.equal(result.lettersAfter, 0, 'and collapse once settled');
   assert.match(result.classes, /\bdone\b/);
   assert.deepEqual(page.errors, []);
   await page.context().close();
@@ -146,7 +151,7 @@ test('words never break across lines', { timeout: 30000 }, async () => {
   await page.context().close();
 });
 
-test('strike-throughs still render, with their letters inside', { timeout: 30000 }, async () => {
+test('strike-throughs still render, with their word inside', { timeout: 30000 }, async () => {
   const page = await handPage();
   const result = await page.evaluate(async () => {
     const { renderInk } = await import('./js/ink.js');
@@ -157,11 +162,11 @@ test('strike-throughs still render, with their letters inside', { timeout: 30000
     const s = p.querySelector('s.struck.lined');
     return {
       struck: s?.textContent,
-      letters: s ? s.querySelectorAll('.ch').length : 0,
+      words: s ? s.querySelectorAll('.w').length : 0,
       text: p.textContent,
     };
   });
-  assert.deepEqual(result, { struck: 'devour', letters: 6, text: 'I would devour enjoy hearing more.' });
+  assert.deepEqual(result, { struck: 'devour', words: 1, text: 'I would devour enjoy hearing more.' });
   await page.context().close();
 });
 

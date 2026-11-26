@@ -69,11 +69,14 @@
               <time id="session-date"></time>
             </header>
             <div id="entries" aria-live="polite"></div>
-            <form id="entry-form" autocomplete="off">
-              <textarea id="entry-input" rows="1" maxlength="2000" placeholder="Write something…" aria-label="Write in the diary"></textarea>
-            </form>
+            <!-- keeps the writing box's place in the column flow; the box itself is
+                 positioned over it from outside the columns (issue #45) -->
+            <div id="entry-slot" aria-hidden="true"></div>
           </div>
         </div>
+        <form id="entry-form" autocomplete="off">
+          <textarea id="entry-input" rows="1" maxlength="2000" placeholder="Write something…" aria-label="Write in the diary"></textarea>
+        </form>
         <button id="back-to-toc" type="button" aria-label="Back to contents">⟵ Contents</button>
         <nav id="spread-nav" aria-label="Turn pages">
           <button id="prev-spread" type="button" aria-label="Previous pages"><span aria-hidden="true">‹</span></button>

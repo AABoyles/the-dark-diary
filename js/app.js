@@ -240,6 +240,7 @@ function layout({ follow = false } = {}) {
   }
   spread = target;
   flow.style.transform = `translateX(${-spread * perSpread * step}px)`;
+  placeWritingBox();
   const first = spread * perSpread, last = Math.min(cols, first + perSpread) - 1;
   // desktop: column 0 is the blank spacer, so column n is page n
   const pageNo = (c) => (perSpread === 2 ? c : c + 1);
@@ -249,6 +250,21 @@ function layout({ follow = false } = {}) {
   $('#next-spread').disabled = spread >= spreads - 1;
 }
 const follow = () => requestAnimationFrame(() => layout({ follow: true }));
+
+// Lay the writing box over its slot at the end of the flow; hide it when the
+// slot is on another spread (issue #45: the box is kept out of the columns).
+const entryForm = $('#entry-form');
+const entrySlot = $('#entry-slot');
+function placeWritingBox() {
+  const slot = entrySlot.getBoundingClientRect();
+  const view = flowView.getBoundingClientRect();
+  const port = viewport.getBoundingClientRect();
+  const onPage = slot.width > 0 && slot.left >= port.left - 1 && slot.right <= port.right + 1;
+  entryForm.classList.toggle('offpage', !onPage);
+  entryForm.style.left = `${slot.left - view.left}px`;
+  entryForm.style.top = `${slot.top - view.top}px`;
+  entryForm.style.width = `${slot.width}px`;
+}
 new ResizeObserver(() => layout()).observe(pagesEl);
 // Focus/selection can scroll the clipped viewport; keep it pinned.
 viewport.addEventListener('scroll', () => { viewport.scrollLeft = 0; });
@@ -378,6 +394,8 @@ async function submit() {
   if (!text || busy || !current) return;
   busy = true;
   input.value = '';
+  input.style.height = ''; // back to two lines
+  entrySlot.style.removeProperty('--slot-h');
   input.disabled = true;
   const session = current;
 
@@ -497,8 +515,19 @@ async function submit() {
 }
 
 $('#entry-form').addEventListener('submit', (e) => { e.preventDefault(); submit(); });
-input.addEventListener('input', () => layout());
-input.addEventListener('keydown', (e) => {
+// The writing box has a fixed height and grows (up to four lines) only when its
+// text overflows; only then do the pages need re-flowing. Typing otherwise
+// touches nothing outside the box (issue #45).
+input.addEventListener('input', () => {
+  if (input.scrollHeight <= input.clientHeight + 2) return;
+  const line = parseFloat(getComputedStyle(input).lineHeight) || 34;
+  const next = Math.min(input.scrollHeight, line * 4);
+  if (next > input.clientHeight) {
+    input.style.height = `${next}px`;
+    entrySlot.style.setProperty('--slot-h', `${next}px`);
+    layout();
+  }
+});input.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
 });
 
