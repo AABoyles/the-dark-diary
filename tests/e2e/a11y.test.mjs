@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 // Accessibility (issue #41): axe scans, keyboard-only use, focus, touch targets,
 // visible focus, zoom, text spacing, reduced motion, toggles and heading structure.
 import { test, before, after } from 'node:test';
@@ -131,9 +132,18 @@ async function typeAndWait(page, text) {
   }, null, { timeout: 30000 });
 }
 
+/** Applies CSS without an inline <style> element, which the page's CSP (style-src 'self') blocks. */
+async function injectCss(page, css) {
+  await page.evaluate((text) => {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(text);
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+  }, css);
+}
+
 /** Runs axe on the current page and returns its violations (id, impact, help, targets). */
 async function axeViolations(page, options = { runOnly: { type: 'tag', values: WCAG_TAGS } }) {
-  await page.addScriptTag({ path: AXE_PATH });
+  await page.evaluate(readFileSync(AXE_PATH, 'utf8'));
   return page.evaluate(async (opts) => {
     const r = await window.axe.run({ exclude: ['.page-turn'] }, opts);
     return r.violations.map((v) => ({
@@ -571,7 +581,7 @@ for (const [label, viewport] of VIEWPORTS) {
   test(`200% text: contents and entry views scroll nothing sideways and keep controls on screen, ${label}`, { timeout: 120000 }, async () => {
     await withPage({ viewport, mindChoice: 'none' }, async (page) => {
       await openSeeded(page);
-      await page.addStyleTag({ content: 'html { font-size: 200% !important }' });
+      await injectCss(page, 'html { font-size: 200% !important }');
       await assertNoHorizontalScroll(page, 'contents at 200%');
       await assertInsideViewport(page, ['#new-session']);
 
@@ -594,9 +604,8 @@ for (const [label, viewport] of VIEWPORTS) {
       await newEntry(page);
       await say(page, 'Hello');
 
-      await page.addStyleTag({
-        content: `* { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; } p { margin-bottom: 2em !important; }`,
-      });
+      await injectCss(page,
+        `* { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; } p { margin-bottom: 2em !important; }`);
       await assertNoHorizontalScroll(page, 'entry with text spacing');
       await page.waitForSelector('#spread-label');
       const srText = await page.evaluate(() => {

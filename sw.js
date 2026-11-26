@@ -24,7 +24,12 @@ const MODEL_CACHE = 'transformers-cache';
 // Keep in sync with the repo. tests/unit/sw.test.mjs fails if a js/, js/workers/
 // or css/ file is missing from this list.
 const VENDOR_FONTS = [
-  // 'vendor/fonts/<name>.woff2', ... (filled in with the vendoring step, scripts/vendor.mjs)
+  'vendor/fonts/im-fell-english-400.woff2',
+  'vendor/fonts/im-fell-english-400-italic.woff2',
+  'vendor/fonts/homemade-apple-400.woff2',
+  'vendor/fonts/pinyon-script-400.woff2',
+  'vendor/fonts/cormorant-garamond-600.woff2',
+  'vendor/fonts/cormorant-garamond-600-italic.woff2',
 ];
 
 const SHELL = [

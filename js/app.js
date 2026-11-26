@@ -223,6 +223,9 @@ function setView(view) {
 // we slide the flow by whole spreads.
 function layout({ follow = false } = {}) {
   if (flowView.hidden) return;
+  // a reader already on the last spread stays at the end as the writing grows,
+  // so the writing box never drops onto a spread that isn't showing
+  const wasAtEnd = spread >= spreads - 1;
   perSpread = matchMedia('(min-width: 760px)').matches ? 2 : 1;
   const pad = parseFloat(getComputedStyle($('#toc-page')).paddingLeft) || 32;
   const colw = Math.floor(pagesEl.clientWidth / perSpread - 2 * pad);
@@ -233,7 +236,7 @@ function layout({ follow = false } = {}) {
   const step = (flow.clientWidth + gap) / perSpread;
   const cols = Math.max(1, Math.round((flow.scrollWidth + gap) / step));
   spreads = Math.ceil(cols / perSpread);
-  const target = follow ? spreads - 1 : Math.min(spread, spreads - 1);
+  const target = follow || wasAtEnd ? spreads - 1 : Math.min(spread, spreads - 1);
   if (busy && target > spread && !isTurning()) {
     // the diary's writing ran onto the next spread: turn the page (issue #20)
     turnSpread(() => { spread = target; layout(); }, 'forward');
@@ -256,15 +259,30 @@ const follow = () => requestAnimationFrame(() => layout({ follow: true }));
 // slot is on another spread (issue #45: the box is kept out of the columns).
 const entryForm = $('#entry-form');
 const entrySlot = $('#entry-slot');
+let wantInputFocus = false;
+// if the writer moves focus somewhere else, don't pull it back to the writing box later
+document.addEventListener('focusin', (e) => { if (e.target !== input) wantInputFocus = false; });
 function placeWritingBox() {
   const slot = entrySlot.getBoundingClientRect();
   const view = flowView.getBoundingClientRect();
   const port = viewport.getBoundingClientRect();
   const onPage = slot.width > 0 && slot.left >= port.left - 1 && slot.right <= port.right + 1;
+  // a hidden box can't hold focus: remember to give it back when the box is on show again
+  if (!onPage && document.activeElement === input) wantInputFocus = true;
   entryForm.classList.toggle('offpage', !onPage);
   entryForm.style.left = `${slot.left - view.left}px`;
   entryForm.style.top = `${slot.top - view.top}px`;
   entryForm.style.width = `${slot.width}px`;
+  if (onPage && wantInputFocus && !busy && !input.disabled && current) {
+    wantInputFocus = false;
+    input.focus({ preventScroll: true });
+  }
+}
+/** Focus the writing box now, or as soon as it is laid out on the visible spread. */
+function focusInput() {
+  if (entryForm.classList.contains('offpage')) { wantInputFocus = true; return; }
+  input.focus({ preventScroll: true });
+  if (document.activeElement !== input) wantInputFocus = true;
 }
 new ResizeObserver(() => layout()).observe(pagesEl);
 // Focus/selection can scroll the clipped viewport; keep it pinned.
@@ -341,7 +359,7 @@ async function selectSessionNow(id) {
     setView('session');
     layout({ follow: true });
   }, 'forward');
-  if (current) input.focus({ preventScroll: true });
+  if (current) focusInput();
 }
 
 function newSession() {
@@ -367,7 +385,7 @@ async function newSessionNow() {
     setView('session');
     layout({ follow: true });
   }, 'forward');
-  input.focus({ preventScroll: true });
+  focusInput();
 }
 
 function readStore(key) {
@@ -511,8 +529,8 @@ async function submit() {
 
   busy = false;
   input.disabled = false;
-  if (current && current.id === session.id) input.focus({ preventScroll: true });
   follow();
+  if (current && current.id === session.id) focusInput();
 }
 
 $('#entry-form').addEventListener('submit', (e) => { e.preventDefault(); submit(); });
@@ -528,7 +546,8 @@ input.addEventListener('input', () => {
     entrySlot.style.setProperty('--slot-h', `${next}px`);
     layout();
   }
-});input.addEventListener('keydown', (e) => {
+});
+input.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
 });
 

@@ -72,8 +72,8 @@
     "strikeRate": 2.8,
     "rulesUsed": 41,
     "replyP50Ms": 4.9,
-    "replyP95Ms": 10.1,
-    "replyMaxMs": 51.4,
+    "replyP95Ms": 11,
+    "replyMaxMs": 60,
     "topRules": [
       [
         "i am",

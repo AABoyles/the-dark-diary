@@ -219,3 +219,11 @@ test('activate deletes other shell, vendor and legacy vendor caches, keeping the
   await Promise.all(pending);
   assert.deepEqual([...stores.keys()].sort(), ['dark-diary-shell-v123', 'dark-diary-vendor-v123', 'transformers-cache']);
 });
+
+test('every font css/fonts.css loads is precached, so the book keeps its hands offline', async () => {
+  const css = await readFile(ROOT + 'css/fonts.css', 'utf8');
+  const fonts = [...css.matchAll(/url\(['"]?\.\.\/(vendor\/fonts\/[^'")]+)['"]?\)/g)].map((m) => m[1]);
+  assert.ok(fonts.length > 0, 'fonts.css names its woff2 files');
+  const shell = new Set(load().SHELL);
+  for (const f of fonts) assert.ok(shell.has(f), `${f} is in SHELL`);
+});
