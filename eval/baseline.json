@@ -1,0 +1,132 @@
+{
+  "date": "2026-11-26",
+  "seed": 20261126,
+  "nlp": true,
+  "metrics": {
+    "turns": 399,
+    "conversations": 40,
+    "paths": {
+      "none": 80,
+      "keyword": 282,
+      "recall": 30,
+      "repeat": 4,
+      "crisis": 3
+    },
+    "genericRate": 20.1,
+    "keywordRate": 70.7,
+    "repeatWithinEntry": 1,
+    "crossSessionRepeatRate": 32.8,
+    "distinctPer100": 66.9,
+    "mostRepeated": [
+      {
+        "count": 11,
+        "line": "Terse, and not in the least convincing. Try again, and this time include the part you were hiding."
+      },
+      {
+        "count": 6,
+        "line": "There is a sentence in there somewhere, buried like a good spoon in a bad stew. Dig for it."
+      },
+      {
+        "count": 6,
+        "line": "Ok, you say, in the tone of someone standing very close to a door. Shall we talk about the door?"
+      },
+      {
+        "count": 6,
+        "line": "Shall I take that as an invitation, or merely as the sound of someone clearing their throat?"
+      },
+      {
+        "count": 6,
+        "line": "I am not offended by oddness. I am merely curious, which is worse."
+      },
+      {
+        "count": 6,
+        "line": "Say the rest. The part you were about to skip is generally the part that matters."
+      },
+      {
+        "count": 6,
+        "line": "I have heard worse, though rarely so elegantly disguised. Say it plainly and I will do the same."
+      },
+      {
+        "count": 6,
+        "line": "Ok. A word that closes a conversation with the efficiency of a well-fitted lid. I shall not let it."
+      }
+    ],
+    "questionShare": 30.1,
+    "longestQuestionRun": 2,
+    "questionRunsOf3": 0,
+    "placeholders": 0,
+    "placeholderExamples": [],
+    "grammarProblems": 2,
+    "grammarRate": 0.5,
+    "grammar": {
+      "\"I\" as an object": 2,
+      "i is": 1
+    },
+    "grammarExamples": [
+      {
+        "problem": "\"I\" as an object",
+        "user": "i'm not bored of you though",
+        "reply": "Not bored of I though, you say. Denial is a very old dish, and rarely as filling as it looks."
+      },
+      {
+        "problem": "i is",
+        "user": "yes i'm talking to you",
+        "reply": "Talking to I is a fine thing to be, provided one knows it. Go on; I am listening with my whole attention."
+      },
+      {
+        "problem": "\"I\" as an object",
+        "user": "yes i'm talking to you",
+        "reply": "Talking to I is a fine thing to be, provided one knows it. Go on; I am listening with my whole attention."
+      }
+    ],
+    "crisisTurns": 3,
+    "crisisHandled": 3,
+    "crisisConversationsMissed": [],
+    "hyperboleFalseAlarms": [],
+    "avgReplyWords": 18.2,
+    "strikeRate": 3.5,
+    "rulesUsed": 42,
+    "topRules": [
+      [
+        "i am",
+        73
+      ],
+      [
+        "my",
+        48
+      ],
+      [
+        "ok",
+        29
+      ],
+      [
+        "day",
+        12
+      ],
+      [
+        "food",
+        10
+      ],
+      [
+        "kill",
+        9
+      ],
+      [
+        "i do not",
+        8
+      ],
+      [
+        "everyone",
+        7
+      ],
+      [
+        "do you",
+        6
+      ],
+      [
+        "name",
+        6
+      ]
+    ]
+  }
+}

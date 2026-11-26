@@ -1830,8 +1830,13 @@ function reply(messages, ext, opts) {
   const mustStatement = lastQ && prevQ;
   const wantQ = mustStatement ? false : Math.random() < (lastQ ? 0.15 : 0.4);
   const ctx = { wantQ, mustStatement, diaryNorms };
+  // ctx.trace (optional, for the quality harness, issue #38): which path answered
+  const mark = (path, out, rule = null) => {
+    if (out && ext.trace && typeof ext.trace === 'object') { ext.trace.path = path; ext.trace.rule = rule; }
+    return out;
+  };
 
-  if (!norm(latest)) return fromList(EMPTY_LINES, ctx);
+  if (!norm(latest)) return mark('empty', fromList(EMPTY_LINES, ctx));
 
   // Self-harm is checked first, on the original text and on any rewrite.
   const rewrite = typeof ext.rewrite === 'string'
@@ -1839,16 +1844,16 @@ function reply(messages, ext, opts) {
   const lowered = latest.toLowerCase().replace(/['‘’`]/g, '');
   const loweredRewrite = rewrite.toLowerCase().replace(/['‘’`]/g, '');
   if (SELF_HARM.test(lowered) || (loweredRewrite && SELF_HARM.test(loweredRewrite))) {
-    return fromList(SELF_HARM_LINES, ctx);
+    return mark('crisis', fromList(SELF_HARM_LINES, ctx));
   }
 
   const sentences = splitSentences(normalize(latest));
-  if (sentences.length === 0) return fromList(EMPTY_LINES, ctx);
+  if (sentences.length === 0) return mark('empty', fromList(EMPTY_LINES, ctx));
 
   const key = sentences.map((w) => w.join(' ')).join(' ');
   if (earlier.some((e) => sentenceKey(e) === key)) {
     const repeated = fromList(REPEAT_LINES, ctx);
-    if (repeated) return repeated;
+    if (repeated) return mark('repeat', repeated);
   }
 
   // A recollection the message touches on comes before the keyword rules.
@@ -1856,14 +1861,14 @@ function reply(messages, ext, opts) {
   const currentNorm = `${norm(latest)} ${norm(rewrite)}`;
   if (recs.length) {
     const remembered = recollectionReply(recs, ctx, currentNorm);
-    if (remembered) return remembered;
+    if (remembered) return mark('recollection', remembered);
   }
 
   // A time remark, about one reply in seven, and only once per transcript.
   const tags = timeTags(opts.time);
   if (tags.length && !timeRemarked(diaryNorms) && Math.random() < 0.15) {
     const remark = timeRemark(tags, holidayName(opts.time), ctx);
-    if (remark) return remark;
+    if (remark) return mark('time', remark);
   }
 
   // The semantic rewrite stands in for the original only when the original
@@ -1884,7 +1889,7 @@ function reply(messages, ext, opts) {
   if (tone !== 'acquaintance' && candidates.length && candidates[0].rule.rank <= 2
     && Math.random() < 0.2) {
     const line = fromList(FAMILIAR_LINES[tone], ctx);
-    if (line) return line;
+    if (line) return mark('familiar', line);
   }
 
   for (const c of candidates) {
@@ -1894,7 +1899,7 @@ function reply(messages, ext, opts) {
     const words = pipeline[c.j];
     for (const decomp of rule.decomps) {
       const out = tryDecomp(decomp, words, ctx);
-      if (out) return out;
+      if (out) return mark(pipeline === sentences ? 'keyword' : 'rewrite', out, rule.key);
     }
   }
 
@@ -1902,17 +1907,17 @@ function reply(messages, ext, opts) {
   // earlier remark, otherwise a catch-all.
   if (recs.length && Math.random() < 0.35) {
     const volunteered = volunteerRecollection(recs, ctx);
-    if (volunteered) return volunteered;
+    if (volunteered) return mark('volunteer', volunteered);
   }
   if (earlier.length && Math.random() < 0.6) {
     const remembered = recall(earlier, ctx);
-    if (remembered) return remembered;
+    if (remembered) return mark('recall', remembered);
   }
   if (tone !== 'acquaintance' && Math.random() < 0.2) {
     const line = fromList(FAMILIAR_LINES[tone], ctx);
-    if (line) return line;
+    if (line) return mark('familiar-none', line);
   }
-  return fromList(NONE_LINES, ctx) || SAVERS[0];
+  return mark('none', fromList(NONE_LINES, ctx) || SAVERS[0]);
 }
 
 const FALLBACK_LINE = 'The diary is listening. Go on.';
