@@ -477,7 +477,7 @@ export const LINES = [
   L("school-tutor-patience", "Your tutor has run out of patience, and his sighs have begun to resemble a small, passive weather front. Which of you will break?", "anger", "school teacher", "tease"),
   L("school-tests-returned", "The test papers came back with red ink like a row of small, precise wounds. Which one still stings?", "shame", "school exam", "probe"),
   L("school-holiday-reading", "The summer holidays were spent reading books you were told to avoid, which was the only lesson worth keeping. Which one?", "delight", "school holiday childhood", "probe"),
-  L("school-university-offer", "The university letter arrived and you read it on the stairs, sitting down, as if the words might change if you stood. Did they?", "joy", "school college joy", "probe"),
+  L("school-university-offer", "The university letter arrived and you read it on the stairs, sitting down, as if the words might change if you stood. Did they?", "delight", "school college joy", "probe"),
 
   // ---------------------------------------------------------------- health & illness
   L("health-flu-bed", "You have been in bed with flu for four days and the blanket has become the only reliable friend. Shall we discuss what it has been hearing?", "boredom", "health illness sleep", "comfort-oblique"),
