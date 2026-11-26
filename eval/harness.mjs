@@ -34,6 +34,7 @@ const GRAMMAR = [
   ['you am', /\byou am\b/i],
   ['i are', /\bi are\b/i],
   ['i is', /\bi is\b/i],
+  ['"I" as an object', /\b(to|with|for|at|about|from|of|tell|told|give|gave|ask|asked|show|showed|need|needs|love|loves|hate|hates) I\b(?!'|\s+(am|was|would|will|have|had|can|could|do|did|should|shall|must|might|may|think|know|said|say|suspect|find|mean|hope|wonder|see)\b)/],
   ['you was (as subject)', /(^|[.!?]\s+|,\s*)you was\b/i],
   ['i does/has-agreement', /\bi (does|doesn't|has|hasn't|was not you)\b/i],
   ['me am / me is', /\bme (am|is|are)\b/i],

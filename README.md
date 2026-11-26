@@ -31,3 +31,14 @@ npm run test:e2e     # browser end-to-end tests against a local static server, ~
 ```
 
 Unit tests live in `tests/unit/`; end-to-end tests in `tests/e2e/` run offline (CDN and Hugging Face requests are blocked, so the app runs on its scripted engine; model streaming is tested with a stand-in client). Both run in CI on every pull request (`.github/workflows/test.yml`). The site itself still has no build step and no runtime dependencies.
+
+## Measuring the fallback engine
+
+```sh
+npm run eval                        # writes eval/report.md and eval/latest.json
+npm run eval -- --update-baseline   # also writes eval/baseline.json (commit it)
+npm run eval -- --no-nlp            # without compromise.js (regex fallbacks only)
+```
+
+Replays the 40 scripted conversations in `eval/corpus.mjs` through the no-LLM pipeline (easter eggs, crisis check, ELIZA engine) with seeded randomness, and reports the generic-fallback rate, repetition within and across sessions, distinct replies, question share and runs, reflection grammar problems, placeholders, crisis handling and false alarms. The report shows deltas against the committed baseline. `tests/unit/eval.test.mjs` enforces the hard floors in CI.
+
