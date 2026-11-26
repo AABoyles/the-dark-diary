@@ -8,9 +8,29 @@
 //   await w.finish(finalText);       // reconcile with the final text, resolve when written
 //
 // Each character is a <span class="ch"> that animates in (see css: .ink.writing .ch).
-// When finished, the paragraph collapses back to plain text with class "done".
+// Strike-through markup "~~cruel~~ gentle" (issue #13) is written as the cruel
+// word, then a line drawn through it, a short pause, and the gentler word.
+// When finished, the paragraph collapses to its final markup (renderInk) with class "done".
+
+import { parseStrikes } from './strike.js';
 
 export const CHAR_DELAY_MS = 38;
+const STRIKE_PAUSE_MS = 520;
+
+/** Render text (with optional ~~strike~~ markup) into a paragraph, instantly. */
+export function renderInk(p, text) {
+  p.textContent = '';
+  for (const seg of parseStrikes(String(text ?? ''))) {
+    if (seg.struck) {
+      const s = document.createElement('s');
+      s.className = 'struck lined';
+      s.textContent = seg.text;
+      p.appendChild(s);
+    } else {
+      p.appendChild(document.createTextNode(seg.text));
+    }
+  }
+}
 
 export class InkWriter {
   constructor(p, { charDelay = CHAR_DELAY_MS, onProgress = null } = {}) {
@@ -21,6 +41,7 @@ export class InkWriter {
     this.written = '';      // characters already on the page
     this.finalText = null;  // set by finish()
     this.timer = null;
+    this.target = p;        // where characters go: the paragraph, or an open <s>
     this.done = new Promise((resolve) => { this._resolve = resolve; });
     p.textContent = '';
     p.classList.remove('done');
@@ -52,7 +73,7 @@ export class InkWriter {
       } else {
         this.queue = [];
         this.written = final;
-        this.p.textContent = final;
+        renderInk(this.p, final);
       }
       this.finalText = final;
       this._tick();
@@ -66,12 +87,37 @@ export class InkWriter {
       if (this.finalText !== null) this._settle();
       return;
     }
+    // strike markup: "~~" opens or closes a crossed-out word
+    if (this.queue[0] === '~') {
+      if (this.queue.length < 2 && this.finalText === null) {
+        this.timer = setTimeout(() => { this.timer = null; this._tick(); }, this.charDelay); // wait for the second "~"
+        return;
+      }
+      if (this.queue[1] === '~') {
+        this.queue.splice(0, 2);
+        this.written += '~~';
+        let pause = 0;
+        if (this.target === this.p) {
+          const s = document.createElement('s');
+          s.className = 'struck';
+          this.p.appendChild(s);
+          this.target = s;
+        } else {
+          const s = this.target;
+          this.target = this.p;
+          requestAnimationFrame(() => s.classList.add('lined')); // draw the line through it
+          pause = STRIKE_PAUSE_MS;
+        }
+        this.timer = setTimeout(() => { this.timer = null; this._tick(); }, pause);
+        return;
+      }
+    }
     const ch = this.queue.shift();
     const s = document.createElement('span');
     s.className = 'ch';
     s.style.setProperty('--i', 0); // each character animates in as it is placed
     s.textContent = ch;
-    this.p.appendChild(s);
+    this.target.appendChild(s);
     this.written += ch;
     if (this.onProgress && (ch === ' ' || this.written.length % 12 === 0)) {
       try { this.onProgress(); } catch { /* ignore */ }
@@ -82,7 +128,7 @@ export class InkWriter {
   _settle() {
     // let the last characters finish their fade-in, then collapse to plain text
     setTimeout(() => {
-      this.p.textContent = this.finalText;
+      renderInk(this.p, this.finalText);
       this.p.classList.remove('writing');
       this.p.classList.add('done');
       try { this.onProgress?.(); } catch { /* ignore */ }

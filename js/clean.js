@@ -1,20 +1,25 @@
 /**
  * clean.js - post-processing for model output (pure functions, no DOM).
  *
- *   clean(text)        -> the diary's reply as plain prose, at most 3 sentences / ~260 chars
+ *   clean(text, { allowStrike }) -> the diary's reply as plain prose, at most 3 sentences / ~260 chars.
+ *                         Strike-through markup "~~cruel~~ gentle" (issue #13) is kept (at most one)
+ *                         when allowStrike is true, and otherwise reduced to the gentle word.
  *   cleanTitle(text)   -> a short Title Case entry title
- *   streamPrefix(raw)  -> while a reply is still streaming in (issue #7): the part of the
+ *   streamPrefix(raw, { allowStrike }) -> while a reply is still streaming in (issue #7): the part of the
  *                         text that is safe to show now, i.e. guaranteed to remain a prefix
  *                         of clean(raw + whatever arrives next) in all but rare cases.
  */
+
+import { limitStrikes, stripStrikes } from './strike.js';
 
 
 const EMOJI_RE = /[\p{Extended_Pictographic}\p{Emoji_Modifier}‍️⃣]/gu;
 const QUOTE_EDGE_RE = /^[\s"'“”‘’`]+|[\s"'“”‘’`]+$/g;
 const LABEL_RE = /^(?:the\s+)?(?:dark\s+)?diary\s*:\s*|^(?:user|assistant|you|model|narrator|writer)\s*:\s*/i;
 
-export function clean(text) {
+export function clean(text, { allowStrike = false } = {}) {
   let t = String(text ?? '').replace(/\r/g, '');
+  t = allowStrike ? limitStrikes(t, 1) : stripStrikes(t);
 
   // Stage directions: (parenthetical) and *asterisked* actions, plus [brackets].
   t = t.replace(/\([^()]*\)/g, ' ');
@@ -103,7 +108,13 @@ function firstUnclosed(t) {
       else stack.push(['*', i]);
     } else if (ch === '\n' && stack.at(-1)?.[0] === '*') stack.pop(); // clean() never spans * over lines
   }
-  return stack.length ? stack[0][1] : t.length;
+  let cut = stack.length ? stack[0][1] : t.length;
+  // an unclosed ~~strike~~ (odd number of "~~") is held back too
+  const tildes = [...t.matchAll(/~~/g)].map((m) => m.index);
+  if (tildes.length % 2 === 1) cut = Math.min(cut, tildes.at(-1));
+  // a lone trailing "~" may be the first half of "~~"
+  if (cut === t.length && t.endsWith('~')) cut = t.length - 1;
+  return cut;
 }
 
 /**
@@ -114,12 +125,12 @@ function firstUnclosed(t) {
  *  - a word still being written (it might be half an emoji, or be cut later), and
  *    trailing , ; : (an over-long sentence is cut just before them)
  */
-export function streamPrefix(raw) {
+export function streamPrefix(raw, { allowStrike = false } = {}) {
   const t = String(raw ?? '');
   const settled = t.length >= 24 || /[.!?…]/.test(t);
   if (!settled) return '';
   const upto = t.slice(0, firstUnclosed(t));
-  let out = clean(upto);
+  let out = clean(upto, { allowStrike });
   if (out.endsWith('…') && !/…\s*$/.test(t)) out = out.slice(0, -1).trimEnd();
   else if (!/\s$/.test(upto)) out = out.replace(/\S+$/, '').trimEnd();
   return out.replace(/[,;:]+$/, '');

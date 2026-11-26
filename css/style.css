@@ -1137,6 +1137,55 @@ body {
 
 
 /* -------------------------------------------------------------------------
+   13d. Strike-throughs (issue #13) and revised titles (issue #17)
+   ------------------------------------------------------------------------- */
+
+.ink s.struck,
+#toc-list s.toc-old {
+  position: relative;
+  text-decoration: none;
+}
+.ink s.struck::after,
+#toc-list s.toc-old::after {
+  content: "";
+  position: absolute;
+  left: -3%;
+  right: -3%;
+  top: 52%;
+  height: 0.09em;
+  min-height: 1.5px;
+  background: currentColor;
+  border-radius: 1px;
+  transform: scaleX(0) rotate(-2deg);
+  transform-origin: 0 50%;
+  transition: transform 0.45s cubic-bezier(0.4, 0, 0.6, 1);
+}
+.ink s.struck.lined::after,
+#toc-list s.toc-old.lined::after {
+  transform: scaleX(1) rotate(-2deg);
+}
+
+#toc-list .toc-title s.toc-old {
+  display: block;
+  font-size: 0.78em;
+  color: var(--ink-faded);
+}
+#toc-list .toc-current { display: block; }
+#toc-list .toc-current.fresh-ink {
+  animation: freshInk 1.6s ease-out 0.5s both;
+}
+@keyframes freshInk {
+  from { clip-path: inset(0 100% 0 0); opacity: 0.4; }
+  to   { clip-path: inset(0 0 0 0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ink s.struck::after, #toc-list s.toc-old::after { transition: none; }
+  #toc-list .toc-current.fresh-ink { animation: none; }
+}
+
+
+/* -------------------------------------------------------------------------
    14. Reduced motion: show final states, no animation
    ------------------------------------------------------------------------- */
 
