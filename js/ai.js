@@ -10,7 +10,8 @@
  *   initEngine(onStatus, mind) -> Promise<{ backend }>  boots the chosen mind once (cached)
  *   resetEngine()        -> drop the engine so another mind can be booted
  *   builtinStatus()      -> Prompt API state, without downloading
- *   reply(messages, ctx) -> Promise<string>        the diary's next line (ctx.recollections: memories from earlier sessions)
+ *   reply(messages, ctx, { onText }) -> Promise<string>  the diary's next line (ctx.recollections: memories from earlier sessions;
+ *                        onText: streamed, cleaned pieces as they arrive)
  *   makeTitle(messages)  -> Promise<string>        a short insulting entry title
  *   getBackend()         -> 'prompt-api' | 'transformers' | 'scripted' | null
  *
@@ -21,6 +22,7 @@ import { scriptedReply, scriptedTitle } from './fallback.js';
 import { createLlm } from './llm-client.js';
 import { matchIntent } from './embed.js';
 import { memoryNote } from './memory.js';
+import { clean, cleanTitle, streamPrefix } from './clean.js';
 
 // Which model to load (and whether to load one at all) is decided by the app
 // with js/mind.js and passed to initEngine(); see GitHub issues #6 and #25.
@@ -248,8 +250,9 @@ async function ensureEngine() {
 /**
  * Runs one generation. The last message is the prompt; earlier ones are history.
  * `instruction`, when given, is appended to the prompt text.
+ * `onRaw`, when given, receives the raw text so far as it streams in (issue #7).
  */
-async function generateRaw(persona, messages, instruction, maxTokens) {
+async function generateRaw(persona, messages, instruction, maxTokens, onRaw = null) {
   const recent = (Array.isArray(messages) ? messages : []).slice(-HISTORY_LIMIT);
   const last = recent.at(-1);
   const history = recent.slice(0, -1);
@@ -259,7 +262,15 @@ async function generateRaw(persona, messages, instruction, maxTokens) {
   if (eng.backend === 'prompt-api') {
     const session = await eng.p.api.create(sessionOptions(eng.p, persona, history));
     try {
-      return await session.prompt(prompt);
+      if (!onRaw || typeof session.promptStreaming !== 'function') return await session.prompt(prompt);
+      let raw = '';
+      for await (const chunk of session.promptStreaming(prompt)) {
+        const c = String(chunk ?? '');
+        // Older Chrome builds sent the whole text so far; newer ones send deltas.
+        raw = raw && c.startsWith(raw) ? c : raw + c;
+        onRaw(raw);
+      }
+      return raw;
     } finally {
       try { session.destroy?.(); } catch { /* ignore */ }
     }
@@ -271,99 +282,18 @@ async function generateRaw(persona, messages, instruction, maxTokens) {
       ...history.map(toTurn),
       { role: 'user', content: prompt },
     ];
+    let raw = '';
     const text = await eng.llm.generate(chat, {
       max_new_tokens: maxTokens,
       do_sample: true,
       temperature: 0.9,
       top_p: 0.92,
       repetition_penalty: 1.1,
-    });
+    }, onRaw ? { onToken: (piece) => { raw += piece; onRaw(raw); } } : {});
     return typeof text === 'string' ? text : '';
   }
 
   throw new Error('No model backend available.');
-}
-
-// ---------------------------------------------------------------------------
-// Cleaning
-// ---------------------------------------------------------------------------
-
-const EMOJI_RE = /[\p{Extended_Pictographic}\p{Emoji_Modifier}‍️⃣]/gu;
-const QUOTE_EDGE_RE = /^[\s"'“”‘’`]+|[\s"'“”‘’`]+$/g;
-const LABEL_RE = /^(?:the\s+)?(?:dark\s+)?diary\s*:\s*|^(?:user|assistant|you|model|narrator|writer)\s*:\s*/i;
-
-function clean(text) {
-  let t = String(text ?? '').replace(/\r/g, '');
-
-  // Stage directions: (parenthetical) and *asterisked* actions, plus [brackets].
-  t = t.replace(/\([^()]*\)/g, ' ');
-  t = t.replace(/\[[^\[\]]*\]/g, ' ');
-  t = t.replace(/\*[^*\n]*\*/g, ' ');
-
-  // Markdown: line prefixes, emphasis, code, headings.
-  t = t.replace(/^\s*(?:#+|>+|[-+*•]+)\s+/gm, '');
-  t = t.replace(/[*_`#]/g, '');
-
-  // Plain prose: one line, no emojis, collapsed whitespace.
-  t = t.replace(EMOJI_RE, '').replace(/\s+/g, ' ').trim();
-
-  // Strip surrounding quotes and speaker labels, repeatedly.
-  for (let i = 0; i < 4; i++) {
-    const before = t;
-    t = t.replace(QUOTE_EDGE_RE, '').replace(LABEL_RE, '').trim();
-    if (t === before) break;
-  }
-
-  return capSentences(t, 3, 260);
-}
-
-function capSentences(t, maxSentences, maxChars) {
-  if (!t) return '';
-  const parts = t.split(/(?<=[.!?…])\s+/).filter(Boolean);
-  let out = '';
-  for (const part of parts.slice(0, maxSentences)) {
-    const candidate = out ? `${out} ${part}` : part;
-    if (candidate.length > maxChars) break;
-    out = candidate;
-  }
-  if (!out) {
-    // The first sentence alone is too long: cut at a word boundary.
-    const cut = t.slice(0, maxChars);
-    const space = cut.lastIndexOf(' ');
-    out = (space > 40 ? cut.slice(0, space) : cut).replace(/[,;:\s]+$/, '') + '…';
-  }
-  return out;
-}
-
-const SMALL_WORDS = new Set(['a', 'an', 'the', 'and', 'but', 'or', 'nor', 'of', 'in', 'on', 'at', 'to', 'for', 'by', 'with', 'as']);
-
-function titleCase(s) {
-  return s
-    .split(' ')
-    .map((w, i) => {
-      if (!w) return w;
-      if (i > 0 && SMALL_WORDS.has(w.toLowerCase())) return w.toLowerCase();
-      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
-    })
-    .join(' ');
-}
-
-function cleanTitle(text) {
-  let t = String(text ?? '')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find(Boolean) ?? '';
-  t = t.replace(EMOJI_RE, '').replace(/[*_`#]/g, '').trim();
-  t = t.replace(/^(?:the\s+)?title\s*:\s*/i, '');
-  t = t.replace(QUOTE_EDGE_RE, '');
-  t = t.replace(/[.。\s]+$/, '');
-  t = t.replace(/\s+/g, ' ').trim();
-  if (t.length > 70) {
-    const cut = t.slice(0, 70);
-    const space = cut.lastIndexOf(' ');
-    t = (space > 40 ? cut.slice(0, space) : cut).trim();
-  }
-  return t ? titleCase(t) : '';
 }
 
 // ---------------------------------------------------------------------------
@@ -372,8 +302,12 @@ function cleanTitle(text) {
 
 /**
  * The diary's next line, given the transcript (the last message is the user's).
+ * Resolves with the final, cleaned text. When `onText` is given, cleaned text is
+ * also delivered as it streams in, as appended pieces (issue #7); the caller
+ * should reconcile with the resolved text, which may differ in rare cases
+ * (e.g. generation failed mid-way and a scripted line was used instead).
  */
-export function reply(messages, ctx = {}) {
+export function reply(messages, ctx = {}, { onText } = {}) {
   // While the model is still loading (weights downloading, warming up) answer
   // at once with the scripted ELIZA-style engine instead of making the user wait.
   if (!engine) return scripted(messages, ctx);
@@ -382,7 +316,16 @@ export function reply(messages, ctx = {}) {
     if (eng.backend !== 'scripted') {
       try {
         const persona = eng.short ? PERSONA_SHORT : PERSONA;
-        const out = clean(await generateRaw(persona + memoryNote(ctx.recollections), messages, '', REPLY_MAX_TOKENS));
+        let shown = '';
+        const onRaw = onText ? (raw) => {
+          const p = streamPrefix(raw);
+          if (p.length > shown.length && p.startsWith(shown)) {
+            const piece = p.slice(shown.length);
+            shown = p;
+            try { onText(piece); } catch { /* a display hiccup must not stop generation */ }
+          }
+        } : null;
+        const out = clean(await generateRaw(persona + memoryNote(ctx.recollections), messages, '', REPLY_MAX_TOKENS, onRaw));
         if (out) return out;
       } catch (err) {
         console.warn('[ai] Generation failed, using a scripted line.', err);
