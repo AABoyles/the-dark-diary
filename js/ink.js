@@ -178,9 +178,28 @@ export function renderInk(p, text, { seed, blotIn = false } = {}) {
     for (const ch of seg.text) placeChar(hand, parent, ch);
     plain += seg.text;
   }
-  p.setAttribute('aria-label', plain);
+  setReadableText(p, plain);
   appendBlot(p, hand.seed, blotIn);
 }
+
+// Screen readers (issue #41): the letter-by-letter ink is decorative and hidden;
+// the plain text sits beside it in a visually hidden element, read once and whole.
+function setReadableText(p, plain) {
+  p.setAttribute('aria-hidden', 'true');
+  const host = p.parentElement;
+  if (!host) return;
+  let sr = host.querySelector(':scope > .sr-only');
+  if (!sr) {
+    sr = document.createElement('span');
+    sr.className = 'sr-only';
+    host.insertBefore(sr, p);
+  }
+  sr.textContent = plain;
+}
+
+const prefersReducedMotion = () => {
+  try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+};
 
 export class InkWriter {
   constructor(p, { charDelay = CHAR_DELAY_MS, onProgress = null, onChar = null, seed = null } = {}) {
@@ -196,7 +215,9 @@ export class InkWriter {
     this.timer = null;
     this.target = p;        // where characters go: the paragraph, or an open <s>
     this.done = new Promise((resolve) => { this._resolve = resolve; });
+    this.reduce = prefersReducedMotion();
     p.textContent = '';
+    p.setAttribute('aria-hidden', 'true'); // the readable copy is set when the text settles
     p.classList.remove('done');
     p.classList.add('writing');
   }
@@ -236,6 +257,20 @@ export class InkWriter {
 
   _tick() {
     if (this.timer) return;
+    // reduced motion (issue #41): no letter-by-letter writing; text appears as it arrives
+    if (this.reduce) {
+      if (this.finalText !== null) {
+        this.queue = [];
+        this.written = this.finalText;
+        this._settle(0);
+      } else if (this.queue.length) {
+        this.written += this.queue.join('');
+        this.queue = [];
+        renderInk(this.p, this.written.replace(/~(?!~)$/, ''), { seed: this.seed });
+        try { this.onProgress?.(); } catch { /* ignore */ }
+      }
+      return;
+    }
     if (!this.queue.length) {
       if (this.finalText !== null) this._settle();
       return;
@@ -278,7 +313,9 @@ export class InkWriter {
     this.timer = setTimeout(() => { this.timer = null; this._tick(); }, this.charDelay);
   }
 
-  _settle() {
+  _settle(delay = 750) {
+    if (this.settling) return;
+    this.settling = true;
     // let the last characters finish their fade-in, then collapse to plain text;
     // any blot fades in only now, after the last character is written
     setTimeout(() => {
@@ -287,6 +324,6 @@ export class InkWriter {
       this.p.classList.add('done');
       try { this.onProgress?.(); } catch { /* ignore */ }
       this._resolve(this.finalText);
-    }, 750);
+    }, delay);
   }
 }

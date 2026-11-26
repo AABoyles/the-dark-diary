@@ -52,24 +52,7 @@
    03. Sound toggle (issue #21): matches #mind-control
    ------------------------------------------------------------------------- */
 
-#sound-toggle {
-  flex: none;
-  align-self: flex-start;
-  margin-top: 0.15rem;
-  padding: 0;
-  background: none;
-  border: 0;
-  font-family: 'IM Fell English', Georgia, serif;
-  font-style: italic;
-  font-size: 0.68rem;
-  color: var(--ink-faded);
-  opacity: 0.75;
-  cursor: pointer;
-}
-#sound-toggle[hidden] { display: none; }
-#sound-toggle:hover,
-#sound-toggle:focus-visible { opacity: 1; color: var(--ink-diary); }
-#sound-toggle[aria-pressed="true"] { color: var(--ink-diary); opacity: 0.9; }
+/* #sound-toggle is styled with the other page settings in css/style.css (#page-settings .setting) */
 
 
 /* -------------------------------------------------------------------------

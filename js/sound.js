@@ -260,8 +260,12 @@ export function coverCreak() {
   });
 }
 
+// The accessible name stays "Sound" (issue #41); aria-pressed carries the state,
+// and the visible ": on"/": off" lives in an aria-hidden span.
 function renderToggle(button, on) {
-  button.textContent = on ? '♪ Sound: on' : '♪ Sound: off';
+  const state = button.querySelector?.('.state');
+  if (state) state.textContent = on ? ': on' : ': off';
+  else button.textContent = on ? '♪ Sound: on' : '♪ Sound: off';
   button.setAttribute('aria-pressed', on ? 'true' : 'false');
 }
 
