@@ -1,11 +1,12 @@
 // Optional natural-language helpers for the Dark Diary.
 //
-// compromise.js is loaded lazily from a CDN the first time loadNlp() is
+// compromise.js is loaded lazily (from vendor/) the first time loadNlp() is
 // called. Until it arrives, or if it never does, every function here either
 // returns null (reflectClause) or falls back to plain regular expressions
 // (extractFacts). Nothing throws, and nothing waits on the network.
 
-const COMPROMISE_URL = 'https://cdn.jsdelivr.net/npm/compromise@14.20.0/builds/three/compromise-three.mjs';
+// Vendored by scripts/vendor.mjs (pinned in vendor.lock.json); served from this origin.
+const COMPROMISE_URL = new URL('../vendor/compromise/compromise-three.mjs', import.meta.url).href;
 
 let nlp = null;
 let loading = null;
