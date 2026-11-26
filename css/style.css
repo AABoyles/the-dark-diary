@@ -764,6 +764,8 @@ body {
   outline: none;
   box-shadow: inset 0 -2px 0 var(--ink-user);
 }
+/* the focus underline appears at once, not over a fade (a focus cue must be immediate) */
+#entry-input { transition: none; }
 
 
 /* -------------------------------------------------------------------------
