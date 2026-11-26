@@ -10,7 +10,7 @@ import { familiarity } from './familiarity.js';
 import { composeOverture } from './overture.js';
 import { turnPage, isTurning } from './pageturn.js';
 import { mountSoundToggle, scratch, strokeSound, rustle, coverCreak } from './sound.js';
-import { startCandle, setThinking } from './candle.js';
+import { startCandle, stopCandle, setThinking } from './candle.js';
 import { matchEgg } from './eggs.js';
 import { createBandit, engagementReward, FAMILIES } from './bandit.js';
 import { playAnagram } from './effects.js';
@@ -50,6 +50,8 @@ function openBook() {
   book.classList.add('open');
   coverCreak();
   startEngine();
+  // the cover is gone: put focus somewhere useful (issue #41)
+  setTimeout(() => $('#new-session').focus({ preventScroll: true }), 50);
 }
 $('#cover').addEventListener('click', openBook);
 $('#cover').addEventListener('keydown', (e) => {
@@ -181,7 +183,10 @@ async function renderToc() {
     const li = document.createElement('li');
     li.dataset.id = s.id;
     if (current && current.id === s.id) li.classList.add('active');
-    li.innerHTML = '<span class="toc-title"></span><span class="toc-leader"></span><time class="toc-date"></time>';
+    // a real button, so the contents work from the keyboard (issue #41)
+    li.innerHTML = '<button type="button" class="toc-entry"><span class="toc-title"></span><span class="toc-leader" aria-hidden="true"></span><time class="toc-date"></time></button>';
+    const entryBtn = li.querySelector('.toc-entry');
+    entryBtn.dataset.id = s.id;
     const titleEl = li.querySelector('.toc-title');
     const old = s.titleHistory?.at(-1);
     if (old && s.title) {
@@ -199,7 +204,7 @@ async function renderToc() {
       titleEl.textContent = s.title || UNTITLED;
     }
     li.querySelector('.toc-date').textContent = fmtShort(s.createdAt);
-    li.addEventListener('click', () => selectSession(s.id));
+    entryBtn.addEventListener('click', () => selectSession(s.id));
     tocList.appendChild(li);
   }
 }
@@ -485,10 +490,18 @@ input.addEventListener('keydown', (e) => {
 });
 
 $('#new-session').addEventListener('click', newSession);
-$('#back-to-toc').addEventListener('click', () => {
+$('#back-to-toc').addEventListener('click', async () => {
   if (isTurning()) return;
-  turnSpread(() => setView('toc'), 'back');
+  const leaving = current?.id;
+  await turnSpread(() => setView('toc'), 'back');
+  focusContents(leaving);
 });
+
+// After returning to the contents, focus the entry just left, else "Write a new entry".
+function focusContents(id = null) {
+  const btn = id ? tocList.querySelector(`.toc-entry[data-id="${CSS.escape(id)}"]`) : null;
+  (btn || $('#new-session')).focus({ preventScroll: true });
+}
 $('#delete-session').addEventListener('click', async () => {
   if (!current || busy) return;
   if (!confirm('Burn this entry? The diary will not remember it fondly, or at all.')) return;
@@ -498,12 +511,34 @@ $('#delete-session').addEventListener('click', async () => {
     await renderToc();
     setView('toc');
   }, 'back');
+  focusContents();
 });
 
 // ---------- Boot ----------
 registerPWA();
-startCandle();
 mountSoundToggle($('#sound-toggle'));
+mountSetting($('#candle-toggle'), 'dd-candle', true, (on) => (on ? startCandle() : stopCandle()), [': out', ': lit']);
+mountSetting($('#plain-toggle'), 'dd-plain', false, (on) => document.documentElement.classList.toggle('plain-ink', on), [': off', ': on']);
+
+// A small persisted on/off page setting (issue #41: the candle can be put out, WCAG 2.2.2;
+// "plain ink" swaps the script fonts for a legible serif and drops the jitter).
+function mountSetting(button, key, dflt, apply, labels) {
+  let on = dflt;
+  try { const v = localStorage.getItem(key); if (v === 'on' || v === 'off') on = v === 'on'; } catch { /* default */ }
+  const render = () => {
+    button.setAttribute('aria-pressed', on ? 'true' : 'false');
+    const state = button.querySelector('.state');
+    if (state) state.textContent = labels[on ? 1 : 0];
+  };
+  apply(on);
+  render();
+  button.addEventListener('click', () => {
+    on = !on;
+    try { localStorage.setItem(key, on ? 'on' : 'off'); } catch { /* session only */ }
+    apply(on);
+    render();
+  });
+}
 // Small helpers load right away (compromise.js ~340 KB, MiniLM ~23 MB); the big model waits for the book to open.
 Promise.all([loadNlp(), initEmbedder(() => {})]).then(() => backfill()).catch(() => {});
 (async function boot() {

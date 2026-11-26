@@ -165,29 +165,38 @@ test('strike-throughs still render, with their letters inside', { timeout: 30000
   await page.context().close();
 });
 
-test('aria-label is the visible text, struck word included', { timeout: 30000 }, async () => {
+test('screen readers get the visible text once, struck word included (issue #41)', { timeout: 30000 }, async () => {
   const page = await handPage();
   const result = await page.evaluate(async () => {
     const { renderInk, InkWriter } = await import('./js/ink.js');
     const text = 'I would ~~devour~~ enjoy hearing more.';
+    const wrap = (p) => { const d = document.createElement('div'); d.appendChild(p); document.body.appendChild(d); return d; };
     const a = document.createElement('p');
-    document.body.appendChild(a);
+    const da = wrap(a);
     renderInk(a, text);
     const b = document.createElement('p');
-    document.body.appendChild(b);
+    const db = wrap(b);
     const w = new InkWriter(b, { charDelay: 2 });
     w.append(text);
     await w.finish(text);
     return {
-      rendered: a.getAttribute('aria-label'),
+      rendered: da.querySelector('.sr-only')?.textContent,
       renderedText: a.textContent,
-      streamed: b.getAttribute('aria-label'),
+      renderedHidden: a.getAttribute('aria-hidden'),
+      streamed: db.querySelector('.sr-only')?.textContent,
       streamedText: b.textContent,
+      streamedHidden: b.getAttribute('aria-hidden'),
+      readers: db.querySelectorAll('.sr-only').length,
+      noLabel: !a.hasAttribute('aria-label') && !b.hasAttribute('aria-label'),
     };
   });
   assert.equal(result.rendered, 'I would devour enjoy hearing more.');
   assert.equal(result.rendered, result.renderedText);
   assert.equal(result.streamed, result.streamedText);
+  assert.equal(result.renderedHidden, 'true');
+  assert.equal(result.streamedHidden, 'true');
+  assert.equal(result.readers, 1);
+  assert.ok(result.noLabel);
   await page.context().close();
 });
 

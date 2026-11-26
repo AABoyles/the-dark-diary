@@ -112,6 +112,7 @@ export async function turnPage({ book, pages, dir = 'forward', change, single = 
 
     const overlay = document.createElement('div');
     overlay.className = 'page-turn';
+    overlay.setAttribute('aria-hidden', 'true'); // a moving picture of the page, not content (issue #41)
     overlay.style.perspectiveOrigin = `${gutter}px 50%`;
     const leaf = document.createElement('div');
     leaf.className = 'page-turn-leaf';

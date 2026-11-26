@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A leather-bound diary that answers back. Private, offline, and entirely in your browser.">
 <title>The Dark Diary</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,14 +19,16 @@
 </head>
 <body>
 <main id="desk">
+  <h1 class="sr-only">The Dark Diary</h1>
   <!-- CLOSED BOOK: click to open -->
   <section id="book" class="closed" aria-label="The diary">
-    <div id="cover" role="button" tabindex="0" aria-label="Open the diary">
+    <div id="cover" role="button" tabindex="0" aria-describedby="cover-hint">
       <div class="cover-emboss">
         <span class="cover-line">Property of</span>
         <span class="cover-title">The Diary</span>
         <span class="cover-line">of nobody in particular</span>
       </div>
+      <span id="cover-hint" class="cover-hint">Touch the cover to open it</span>
     </div>
 
     <!-- OPEN BOOK -->
@@ -38,7 +41,7 @@
 
       <!-- Right page: table of contents -->
       <div class="page page-right" id="toc-page">
-        <h1 class="toc-heading">Contents</h1>
+        <h2 class="toc-heading">Contents</h2>
         <ol id="toc-list"></ol>
         <!-- The diary asks before it downloads a language model (issues #6, #25) -->
         <section id="mind-slip" hidden aria-labelledby="mind-note">
@@ -48,7 +51,11 @@
         <button id="new-session" type="button">Write a new entry…</button>
         <div id="engine-status" aria-live="polite"></div>
         <button id="mind-control" type="button" hidden></button>
-        <button id="sound-toggle" type="button" aria-pressed="false">♪ Sound: off</button>
+        <div id="page-settings" role="group" aria-label="Page settings">
+          <button id="sound-toggle" class="setting" type="button" aria-pressed="false"><span aria-hidden="true">♪ </span>Sound<span class="state" aria-hidden="true">: off</span></button>
+          <button id="candle-toggle" class="setting" type="button" aria-pressed="true">Candle<span class="state" aria-hidden="true">: lit</span></button>
+          <button id="plain-toggle" class="setting" type="button" aria-pressed="false">Plain ink<span class="state" aria-hidden="true">: off</span></button>
+        </div>
       </div>
 
       <!-- Entry view: text flows through CSS columns, one column per page.
@@ -63,15 +70,15 @@
             </header>
             <div id="entries" aria-live="polite"></div>
             <form id="entry-form" autocomplete="off">
-              <textarea id="entry-input" rows="1" placeholder="Write something…" aria-label="Write in the diary"></textarea>
+              <textarea id="entry-input" rows="1" maxlength="2000" placeholder="Write something…" aria-label="Write in the diary"></textarea>
             </form>
           </div>
         </div>
         <button id="back-to-toc" type="button" aria-label="Back to contents">⟵ Contents</button>
         <nav id="spread-nav" aria-label="Turn pages">
-          <button id="prev-spread" type="button" aria-label="Previous pages">‹</button>
+          <button id="prev-spread" type="button" aria-label="Previous pages"><span aria-hidden="true">‹</span></button>
           <span id="spread-label"></span>
-          <button id="next-spread" type="button" aria-label="Next pages">›</button>
+          <button id="next-spread" type="button" aria-label="Next pages"><span aria-hidden="true">›</span></button>
         </nav>
         <button id="delete-session" type="button" title="Burn this entry">Burn entry</button>
       </div>
