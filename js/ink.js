@@ -11,32 +11,184 @@
 // Strike-through markup "~~cruel~~ gentle" (issue #13) is written as the cruel
 // word, then a line drawn through it, a short pause, and the gentler word.
 // When finished, the paragraph collapses to its final markup (renderInk) with class "done".
+//
+// Hand-written look (issue #22): every letter carries a small deterministic tilt,
+// bob and weight (handFor), chosen from a seed so that streaming and the final
+// render agree. Letters of a word sit in a nowrap <span class="w"> so words never
+// break across lines. About one message in five gets an ink blot (blotFor).
 
 import { parseStrikes } from './strike.js';
 
 export const CHAR_DELAY_MS = 38;
 const STRIKE_PAUSE_MS = 520;
+const BLOT_CHANCE = 0.2;
 
-/** Render text (with optional ~~strike~~ markup) into a paragraph, instantly. */
-export function renderInk(p, text) {
+// ---- deterministic randomness -------------------------------------------
+
+// xmur3: string -> 32-bit hash generator (seeds mulberry32).
+function xmur3(str) {
+  let h = 1779033703 ^ str.length;
+  for (let i = 0; i < str.length; i++) {
+    h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return () => {
+    h = Math.imul(h ^ (h >>> 16), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    return (h ^= h >>> 16) >>> 0;
+  };
+}
+
+// mulberry32: small PRNG returning floats in [0, 1).
+function mulberry32(a) {
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function randomFor(key) {
+  return mulberry32(xmur3(key)());
+}
+
+const round3 = (x) => Math.round(x * 1000) / 1000;
+
+/** A stable 32-bit integer hash (FNV-1a) of the message text. */
+export function seedFor(text) {
+  let h = 2166136261;
+  for (const ch of String(text ?? '')) {
+    h ^= ch.codePointAt(0);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/**
+ * The hand of one character: tilt in degrees (±2.2), vertical bob in em
+ * (±0.06 jitter plus a slow baseline drift of about 0.05em), and weight 0.82–1.0.
+ * `pos` is the letter's place in its word (0 = first); the first two letters of
+ * a word are written darker, as if the pen were freshly dipped.
+ * @param {number|string} seed
+ * @param {number} index  position of the character in the visible text
+ * @param {{pos?: number}} [options]
+ * @returns {{rot: number, dy: number, weight: number}}
+ */
+export function handFor(seed, index, { pos = 99 } = {}) {
+  const rand = randomFor(`${seed}:${index}`);
+  const phase = randomFor(`${seed}:drift`)() * Math.PI * 2;
+  const rot = (rand() * 2 - 1) * 2.2;
+  const jitter = (rand() * 2 - 1) * 0.06;
+  const drift = 0.05 * Math.sin(index * 0.35 + phase);
+  let weight = 0.82 + rand() * 0.13;
+  if (pos < 2) weight = Math.min(1, weight + 0.1);
+  return { rot: round3(rot), dy: round3(jitter + drift), weight: round3(weight) };
+}
+
+/**
+ * The ink blot for a message, or null. About one seed in five has one.
+ * Size in em, offset from the right edge in %, offset from the bottom in em, rotation in degrees.
+ * @param {number|string} seed
+ * @returns {{size: number, right: number, bottom: number, rot: number} | null}
+ */
+export function blotFor(seed) {
+  const rand = randomFor(`${seed}:blot`);
+  if (rand() >= BLOT_CHANCE) return null;
+  return {
+    size: round3(0.5 + rand() * 0.4),
+    right: round3(2 + rand() * 12),
+    bottom: round3(-0.35 + rand() * 0.4),
+    rot: round3(rand() * 360),
+  };
+}
+
+const randomSeed = () => Math.floor(Math.random() * 0x100000000);
+
+// ---- placing characters -------------------------------------------------
+
+function createHand(seed) {
+  return { seed, index: 0, pos: 0, word: null };
+}
+
+/**
+ * Appends one visible character to `parent`. Spaces are plain text nodes so the
+ * line can wrap; letters go into the current word's nowrap span. Returns the
+ * <span class="ch"> for a letter, or null for a space.
+ */
+function placeChar(hand, parent, ch) {
+  if (ch === ' ') {
+    parent.appendChild(document.createTextNode(' '));
+    hand.word = null;
+    hand.pos = 0;
+    hand.index += 1;
+    return null;
+  }
+  if (!hand.word || hand.word.parentNode !== parent) {
+    hand.word = document.createElement('span');
+    hand.word.className = 'w';
+    parent.appendChild(hand.word);
+  }
+  const { rot, dy, weight } = handFor(hand.seed, hand.index, { pos: hand.pos });
+  const s = document.createElement('span');
+  s.className = 'ch';
+  s.style.setProperty('--rot', `${rot}deg`);
+  s.style.setProperty('--dy', `${dy}em`);
+  s.style.setProperty('--w', String(weight));
+  s.textContent = ch;
+  hand.word.appendChild(s);
+  hand.pos += 1;
+  hand.index += 1;
+  return s;
+}
+
+function appendBlot(p, seed, blotIn) {
+  const b = blotFor(seed);
+  if (!b) return;
+  const el = document.createElement('span');
+  el.className = blotIn ? 'blot blot-in' : 'blot';
+  el.setAttribute('aria-hidden', 'true');
+  el.style.setProperty('--bs', `${b.size}em`);
+  el.style.setProperty('--br', `${b.right}%`);
+  el.style.setProperty('--bb', `${b.bottom}em`);
+  el.style.setProperty('--bt', `${b.rot}deg`);
+  p.appendChild(el);
+}
+
+/**
+ * Render text (with optional ~~strike~~ markup) into a paragraph, instantly.
+ * @param {HTMLElement} p
+ * @param {string} text
+ * @param {{seed?: number, blotIn?: boolean}} [options]  seed defaults to seedFor(text);
+ *   blotIn animates the blot in (used when a message has just finished writing).
+ */
+export function renderInk(p, text, { seed, blotIn = false } = {}) {
+  const src = String(text ?? '');
+  const hand = createHand(seed ?? seedFor(src));
   p.textContent = '';
-  for (const seg of parseStrikes(String(text ?? ''))) {
+  let plain = '';
+  for (const seg of parseStrikes(src)) {
+    let parent = p;
     if (seg.struck) {
       const s = document.createElement('s');
       s.className = 'struck lined';
-      s.textContent = seg.text;
       p.appendChild(s);
-    } else {
-      p.appendChild(document.createTextNode(seg.text));
+      parent = s;
     }
+    for (const ch of seg.text) placeChar(hand, parent, ch);
+    plain += seg.text;
   }
+  p.setAttribute('aria-label', plain);
+  appendBlot(p, hand.seed, blotIn);
 }
 
 export class InkWriter {
-  constructor(p, { charDelay = CHAR_DELAY_MS, onProgress = null } = {}) {
+  constructor(p, { charDelay = CHAR_DELAY_MS, onProgress = null, seed = null } = {}) {
     this.p = p;
     this.charDelay = charDelay;
     this.onProgress = onProgress;
+    this.seed = seed ?? randomSeed(); // the hand: the same seed is used for the final render
+    this.hand = createHand(this.seed);
     this.queue = [];        // characters waiting to be written
     this.written = '';      // characters already on the page
     this.finalText = null;  // set by finish()
@@ -73,7 +225,7 @@ export class InkWriter {
       } else {
         this.queue = [];
         this.written = final;
-        renderInk(this.p, final);
+        renderInk(this.p, final, { seed: this.seed });
       }
       this.finalText = final;
       this._tick();
@@ -113,11 +265,8 @@ export class InkWriter {
       }
     }
     const ch = this.queue.shift();
-    const s = document.createElement('span');
-    s.className = 'ch';
-    s.style.setProperty('--i', 0); // each character animates in as it is placed
-    s.textContent = ch;
-    this.target.appendChild(s);
+    const s = placeChar(this.hand, this.target, ch);
+    if (s) s.style.setProperty('--i', 0); // each character animates in as it is placed
     this.written += ch;
     if (this.onProgress && (ch === ' ' || this.written.length % 12 === 0)) {
       try { this.onProgress(); } catch { /* ignore */ }
@@ -126,9 +275,10 @@ export class InkWriter {
   }
 
   _settle() {
-    // let the last characters finish their fade-in, then collapse to plain text
+    // let the last characters finish their fade-in, then collapse to plain text;
+    // any blot fades in only now, after the last character is written
     setTimeout(() => {
-      renderInk(this.p, this.finalText);
+      renderInk(this.p, this.finalText, { seed: this.seed, blotIn: true });
       this.p.classList.remove('writing');
       this.p.classList.add('done');
       try { this.onProgress?.(); } catch { /* ignore */ }
