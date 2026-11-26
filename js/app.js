@@ -8,6 +8,9 @@ import { InkWriter, renderInk } from './ink.js';
 import { timeContext } from './timesense.js';
 import { familiarity } from './familiarity.js';
 import { composeOverture } from './overture.js';
+import { turnPage, isTurning } from './pageturn.js';
+import { mountSoundToggle, scratch, strokeSound, rustle, coverCreak } from './sound.js';
+import { startCandle, setThinking } from './candle.js';
 import { loadNlp } from './nlp.js';
 import { initEmbedder } from './embed.js';
 import { remember, recollect, backfill } from './memory.js';
@@ -42,6 +45,7 @@ function openBook() {
   if (!book.classList.contains('closed')) return;
   book.classList.remove('closed');
   book.classList.add('open');
+  coverCreak();
   startEngine();
 }
 $('#cover').addEventListener('click', openBook);
@@ -220,7 +224,13 @@ function layout({ follow = false } = {}) {
   const step = (flow.clientWidth + gap) / perSpread;
   const cols = Math.max(1, Math.round((flow.scrollWidth + gap) / step));
   spreads = Math.ceil(cols / perSpread);
-  spread = follow ? spreads - 1 : Math.min(spread, spreads - 1);
+  const target = follow ? spreads - 1 : Math.min(spread, spreads - 1);
+  if (busy && target > spread && !isTurning()) {
+    // the diary's writing ran onto the next spread: turn the page (issue #20)
+    turnSpread(() => { spread = target; layout(); }, 'forward');
+    return;
+  }
+  spread = target;
   flow.style.transform = `translateX(${-spread * perSpread * step}px)`;
   const first = spread * perSpread, last = Math.min(cols, first + perSpread) - 1;
   // desktop: column 0 is the blank spacer, so column n is page n
@@ -234,7 +244,17 @@ const follow = () => requestAnimationFrame(() => layout({ follow: true }));
 new ResizeObserver(() => layout()).observe(pagesEl);
 // Focus/selection can scroll the clipped viewport; keep it pinned.
 viewport.addEventListener('scroll', () => { viewport.scrollLeft = 0; });
-const turn = (d) => { spread = Math.max(0, Math.min(spreads - 1, spread + d)); layout(); };
+const turn = (d) => {
+  const next = Math.max(0, Math.min(spreads - 1, spread + d));
+  if (next === spread || isTurning()) return;
+  turnSpread(() => { spread = next; layout(); }, d > 0 ? 'forward' : 'back');
+};
+
+// Turn a leaf of the book while `change` updates the real DOM (issue #20).
+function turnSpread(change, dir) {
+  return turnPage({ book, pages: pagesEl, dir, single: perSpread === 1, change, onTurn: onPageTurn });
+}
+const onPageTurn = () => rustle();
 $('#prev-spread').addEventListener('click', () => turn(-1));
 $('#next-spread').addEventListener('click', () => turn(1));
 flowView.addEventListener('keydown', (e) => {
@@ -278,17 +298,19 @@ function renderSession({ animateLast = false } = {}) {
 }
 
 async function selectSession(id) {
-  if (busy) return;
+  if (busy || isTurning()) return;
   current = (await db.getSession(id)) || null;
-  renderSession();
-  await renderToc();
-  setView('session');
-  follow();
+  await turnSpread(async () => {
+    renderSession();
+    await renderToc();
+    setView('session');
+    layout({ follow: true });
+  }, 'forward');
   if (current) input.focus({ preventScroll: true });
 }
 
 async function newSession() {
-  if (busy) return;
+  if (busy || isTurning()) return;
   // issue #14: sometimes the diary has already written something on the fresh page
   let overture = null;
   try {
@@ -301,10 +323,17 @@ async function newSession() {
     await db.saveSession(current);
     writeStore('dd-overture-at', Date.now());
   }
-  renderSession({ animateLast: !!overture });
-  await renderToc();
-  setView('session');
-  follow();
+  await turnSpread(async () => {
+    renderSession();
+    await renderToc();
+    setView('session');
+    layout({ follow: true });
+  }, 'forward');
+  if (overture) {
+    // the diary's note writes itself once the page has turned
+    const last = entriesEl.querySelector('.entry.diary:last-child .ink');
+    if (last) new InkWriter(last, { onProgress: follow }).finish(overture.text);
+  }
   input.focus({ preventScroll: true });
 }
 
@@ -347,7 +376,7 @@ async function submit() {
   // If the diary is slow to start answering (time to first text > 3 s), a pen
   // starts doodling in the margin of the user's message. Quick answers never see it.
   let pen = null;
-  const penTimer = setTimeout(() => { pen = startDoodle(userEntry); }, DOODLE_AFTER_MS);
+  const penTimer = setTimeout(() => { pen = startDoodle(userEntry, { onStroke: strokeSound }); }, DOODLE_AFTER_MS);
   const stopPen = () => {
     clearTimeout(penTimer);
     if (!pen) return;
@@ -362,9 +391,11 @@ async function submit() {
   // The reply's entry appears at the first streamed text (or when the whole
   // answer arrives) and writes itself at the diary's pace (issue #7).
   let writer = null;
+  setThinking(true); // the candle leans in while the diary composes
   const ensureWriter = () => {
     if (writer) return writer;
     stopPen();
+    setThinking(false);
     const div = document.createElement('div');
     div.className = 'entry diary';
     const p = document.createElement('p');
@@ -429,18 +460,25 @@ input.addEventListener('keydown', (e) => {
 });
 
 $('#new-session').addEventListener('click', newSession);
-$('#back-to-toc').addEventListener('click', () => setView('toc'));
+$('#back-to-toc').addEventListener('click', () => {
+  if (isTurning()) return;
+  turnSpread(() => setView('toc'), 'back');
+});
 $('#delete-session').addEventListener('click', async () => {
   if (!current || busy) return;
   if (!confirm('Burn this entry? The diary will not remember it fondly, or at all.')) return;
   await db.deleteSession(current.id);
   current = null;
-  await renderToc();
-  setView('toc');
+  await turnSpread(async () => {
+    await renderToc();
+    setView('toc');
+  }, 'back');
 });
 
 // ---------- Boot ----------
 registerPWA();
+startCandle();
+mountSoundToggle($('#sound-toggle'));
 // Small helpers load right away (compromise.js ~340 KB, MiniLM ~23 MB); the big model waits for the book to open.
 Promise.all([loadNlp(), initEmbedder(() => {})]).then(() => backfill()).catch(() => {});
 (async function boot() {
