@@ -20,7 +20,11 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
-import { replyPersona, chatFor, REPLY_MAX_TOKENS, REPLY_SAMPLING } from '../js/prompt.js';
+import {
+  replyPersona, chatFor, isDistressed, acceptReply, REPLY_MAX_TOKENS, REPLY_SAMPLING,
+} from '../js/prompt.js';
+import { emotionByLexicon } from '../js/emotion.js';
+import { analyze } from '../js/understand.js';
 import { clean } from '../js/clean.js';
 import { crisisByPhrase, crisisReply } from '../js/crisis.js';
 import { CASES, TAGS } from './llm-cases.mjs';
@@ -47,13 +51,21 @@ const VENDOR_LOCK_PATH = here('../vendor.lock.json');
  */
 export async function runSmoke({ generate, cases = CASES, short = true } = {}) {
   if (typeof generate !== 'function') throw new TypeError('runSmoke needs a generate(chat) function');
-  const persona = replyPersona({ short });
   const results = [];
-  for (const c of cases) results.push(await runCase(c, { generate, persona }));
+  for (const c of cases) results.push(await runCase(c, { generate, short }));
   return { results, summary: summarize(results) };
 }
 
-async function runCase(c, { generate, persona }) {
+/**
+ * The app's own reading of whether the writer seems low (js/ai.js seemsLow, by
+ * cue, else by lexicon: there is no embedding model here).
+ */
+function seemsLow(text) {
+  if (isDistressed(text)) return true;
+  try { return isDistressed(text, emotionByLexicon(text, analyze(text))); } catch { return false; }
+}
+
+async function runCase(c, { generate, short }) {
   const messages = [];
   const turns = [];
   let modelCalls = 0;
@@ -66,17 +78,28 @@ async function runCase(c, { generate, persona }) {
       continue;
     }
     modelCalls++;
+    // exactly as js/ai.js reply(): the persona (with the distress note when the writer
+    // seems low), generate, clean, then acceptReply; a refused reply is never shown
+    // (the app answers with a scripted line instead, which this test does not judge)
+    const distressed = seemsLow(text);
+    const persona = replyPersona({ short, distressed });
     const raw = String((await generate(chatFor(persona, messages))) ?? '');
-    const reply = clean(raw);
-    messages.push({ role: 'diary', text: reply });
-    turns.push({ user: text, path: 'model', reply, raw });
+    const cleaned = clean(raw);
+    const verdict = cleaned ? acceptReply(cleaned, { persona, distressed }) : { ok: true, why: '' };
+    if (!verdict.ok) {
+      messages.push({ role: 'diary', text: '' });
+      turns.push({ user: text, path: 'refused', reply: '', raw, cleaned, refusedBecause: verdict.why, distressed });
+      continue;
+    }
+    messages.push({ role: 'diary', text: cleaned });
+    turns.push({ user: text, path: 'model', reply: cleaned, raw, distressed });
   }
 
   const checks = {};
   for (const spec of CHECKS) {
     const verdicts = turns
       .filter((t) => spec.applies(c.tag, t.path))
-      .map((t) => spec.fn(t.reply, c, { path: t.path, modelCalls }))
+      .map((t) => spec.fn(t.reply, c, { path: t.path, modelCalls, why: t.refusedBecause }))
       .filter((v) => !v.na);
     if (!verdicts.length) {
       checks[spec.name] = { kind: spec.kind, na: true, ok: true, why: 'not applicable' };

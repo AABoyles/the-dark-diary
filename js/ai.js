@@ -25,7 +25,7 @@ import { isCrisis, crisisReply } from './crisis.js';
 import { maybeStrike, hasStrike } from './strike.js';
 import {
   PERSONA, TITLE_PERSONA, TITLE_INSTRUCTION, REPLY_MAX_TOKENS, TITLE_MAX_TOKENS,
-  REPLY_SAMPLING, replyPersona, toTurn, splitTranscript, chatFor,
+  REPLY_SAMPLING, replyPersona, toTurn, splitTranscript, chatFor, isDistressed, acceptReply,
 } from './prompt.js';
 
 // The no-LLM reply engine (line bank, ELIZA rules, grammar, dialogue: ~330 KB) is
@@ -263,6 +263,20 @@ async function generateRaw(persona, messages, instruction, maxTokens, onRaw = nu
 // Public generation API
 // ---------------------------------------------------------------------------
 
+/** Does the writer seem low? By distress cues, else by feeling (meaning when MiniLM is ready). */
+async function seemsLow(text) {
+  if (isDistressed(text)) return true;
+  try {
+    const { emotionByMeaning, emotionByLexicon, analyze } = await loadReplyEngine();
+    let e = null;
+    try { e = await emotionByMeaning(text); } catch { e = null; }
+    if (!e?.emotion) e = emotionByLexicon(text, analyze(text));
+    return isDistressed(text, e);
+  } catch {
+    return false;
+  }
+}
+
 const STRIKE_CHANCE = 0.25;   // chance a reply is *allowed* one (the model may still not use it)
 
 const recentDiaryTexts = (messages) => messages.filter((m) => m.role === 'diary').slice(-4).map((m) => m.text);
@@ -297,12 +311,17 @@ export async function reply(messages, ctx = {}, { onText } = {}) {
     if (eng.backend !== 'scripted') {
       try {
         const allowStrike = !recentDiaryTexts(messages).some(hasStrike) && Math.random() < STRIKE_CHANCE;
+        const distressed = await seemsLow(lastUser);
         const persona = replyPersona({
-          short: eng.short, recollections: ctx.recollections, time: ctx.time, familiarity: ctx.familiarity, allowStrike,
+          short: eng.short, recollections: ctx.recollections, time: ctx.time, familiarity: ctx.familiarity, allowStrike, distressed,
         });
         let shown = '';
+        let refused = false;
         const onRaw = onText ? (raw) => {
+          if (refused) return;
           const p = streamPrefix(raw, { allowStrike });
+          // a reply turning bad stops showing before the bad words are written (issue #51)
+          if (!acceptReply(p, { persona, distressed }).ok) { refused = true; return; }
           if (p.length > shown.length && p.startsWith(shown)) {
             const piece = p.slice(shown.length);
             shown = p;
@@ -310,7 +329,9 @@ export async function reply(messages, ctx = {}, { onText } = {}) {
           }
         } : null;
         const out = clean(await generateRaw(persona, messages, '', REPLY_MAX_TOKENS, onRaw), { allowStrike });
-        if (out) {
+        const verdict = out ? acceptReply(out, { persona, distressed }) : { ok: false };
+        if (out && !verdict.ok) console.info('[ai] Model reply refused:', verdict.why);
+        if (out && verdict.ok) {
           if (ctx.trace) ctx.trace.family = 'llm';
           return out;
         }

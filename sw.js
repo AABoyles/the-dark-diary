@@ -48,6 +48,7 @@ const SHELL = [
   'js/app.js',
   'js/ai.js',
   'js/prompt.js',
+  'js/menace.js',
   'js/db.js',
   'js/fallback.js',
   'js/pwa.js',
