@@ -17,6 +17,7 @@ import { playAnagram } from './effects.js';
 import { loadNlp } from './nlp.js';
 import { initEmbedder } from './embed.js';
 import { remember, recollect, backfill } from './memory.js';
+import { refusalLine } from './clasp.js';
 
 const $ = (s) => document.querySelector(s);
 const book = $('#book');
@@ -46,6 +47,7 @@ const fmtShort = (ts) =>
 // ---------- Book ----------
 function openBook() {
   if (!book.classList.contains('closed')) return;
+  if (clasped) { $('#clasp-input').focus(); return; } // the word first (issue #12)
   book.classList.remove('closed');
   book.classList.add('open');
   coverCreak();
@@ -57,6 +59,118 @@ function openBook() {
 $('#cover').addEventListener('click', openBook);
 $('#cover').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openBook(); }
+});
+
+// ---------- Closing the book, and the clasp (issue #12) ----------
+let clasped = false;         // locked: the cover asks for the word before it opens
+let claspAttempts = 0;
+const IDLE_LOCK_MS = 10 * 60 * 1000;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function showClasp(on) {
+  clasped = on;
+  $('#clasp-form').hidden = !on;
+  $('#cover-hint').hidden = on;
+  book.classList.toggle('clasped', on);
+}
+
+/** Forget the key and take every decrypted word off the page. */
+function lockBook() {
+  db.lock();
+  current = null;
+  tocList.replaceChildren();
+  entriesEl.replaceChildren();
+  $('#session-title').textContent = '';
+  $('#session-date').textContent = '';
+  input.value = '';
+  showClasp(true);
+}
+
+/** Close the book; with a clasp, that locks it. force: wait out a reply in progress. */
+async function closeBook({ force = false } = {}) {
+  if (book.classList.contains('closed')) return;
+  if (busy || isTurning()) {
+    if (!force) return;
+    for (let i = 0; i < 120 && (busy || isTurning()); i++) await sleep(250);
+  }
+  const dlg = $('#binding');
+  if (dlg.open) dlg.close();
+  setView('toc');
+  book.classList.remove('open');
+  book.classList.add('closed');
+  coverCreak();
+  let enabled = false;
+  try { ({ enabled } = await db.claspState()); } catch { /* treat as unclasped */ }
+  if (enabled) lockBook();
+  (enabled ? $('#clasp-input') : $('#cover')).focus({ preventScroll: true });
+}
+$('#close-book').addEventListener('click', () => closeBook());
+
+$('#clasp-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const field = $('#clasp-input');
+  const btn = $('#clasp-open');
+  const out = $('#clasp-refusal');
+  if (!field.value) return;
+  field.disabled = btn.disabled = true;
+  out.textContent = '';
+  let ok = false;
+  try { ok = await db.unlock(field.value); } catch { ok = false; }
+  if (ok) {
+    claspAttempts = 0;
+    field.value = '';
+    field.disabled = btn.disabled = false;
+    showClasp(false);
+    await renderToc();
+    openBook();
+    return;
+  }
+  // each wrong guess waits a little longer before the diary answers
+  claspAttempts++;
+  await sleep(Math.min(5000, 400 * claspAttempts));
+  out.textContent = refusalLine();
+  field.disabled = btn.disabled = false;
+  field.select();
+  field.focus();
+});
+
+// Lock after ten idle minutes (only matters when there is a clasp).
+let lastActive = Date.now();
+for (const type of ['pointerdown', 'keydown', 'wheel', 'touchstart', 'input']) {
+  addEventListener(type, () => { lastActive = Date.now(); }, { capture: true, passive: true });
+}
+async function lockIfIdle() {
+  if (book.classList.contains('closed') || busy || Date.now() - lastActive < IDLE_LOCK_MS) return;
+  try { if ((await db.claspState()).enabled) closeBook({ force: true }); } catch { /* ignore */ }
+}
+setInterval(lockIfIdle, 30_000);
+document.addEventListener('visibilitychange', lockIfIdle);
+
+// Another tab fastened, changed or removed the clasp: follow it.
+db.onClaspChange(async () => {
+  let state = { enabled: false, locked: false };
+  try { state = await db.claspState(); } catch { /* ignore */ }
+  if (state.locked) {
+    if (book.classList.contains('open')) await closeBook({ force: true });
+    else lockBook();
+  } else if (clasped) {
+    showClasp(false);
+    await renderToc();
+  }
+});
+
+// The binding: backups, a bound copy, the clasp (issues #11, #12).
+$('#binding-open').addEventListener('click', async () => {
+  const { openBinding } = await import('./binding.js');
+  openBinding({
+    db,
+    isBusy: () => busy,
+    afterImport: async () => {
+      await renderToc();
+      backfill().catch(() => {}); // restored memories have no vectors: recompute them
+    },
+    afterClaspChange: () => {},
+  });
 });
 
 // ---------- The diary's mind (which model, if any; issues #6 and #25) ----------
@@ -617,5 +731,8 @@ function warmUp() {
 }
 (async function boot() {
   setView('toc');
-  await renderToc();
+  let locked = false;
+  try { ({ locked } = await db.claspState()); } catch { /* no storage: nothing to lock */ }
+  if (locked) showClasp(true);
+  else await renderToc();
 })();

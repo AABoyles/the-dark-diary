@@ -1,0 +1,198 @@
+/* =========================================================================
+   THE DARK DIARY — print.css
+   The printable bound copy (js/print.js). On screen it is never shown. While
+   printing, the desk is hidden and #print-book is the whole document.
+   ========================================================================= */
+
+/* On screen the copy does not exist to the reader; it is only there to print. */
+#print-book {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: auto;
+    margin: 18mm 16mm;
+  }
+
+  /* The screen styles lock the document to one viewport (overflow hidden on
+     html and body). Undo that, or the printed book is cut after the first page. */
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  body > :not(#print-book) {
+    display: none !important;
+  }
+
+  #print-book {
+    display: block;
+    color: #1a1410;
+    background: #fff;
+    font-family: 'IM Fell English', Georgia, serif;
+    font-size: 11.5pt;
+    line-height: 1.55;
+    orphans: 3;
+    widows: 3;
+    -webkit-font-smoothing: auto;
+  }
+
+  /* Title page: the cover's wording, centred, then a page break. */
+  #print-book .print-title {
+    break-after: page;
+    page-break-after: always;
+    padding-top: 55mm;
+    text-align: center;
+  }
+
+  #print-book .print-cover-line {
+    margin: 0.4em 0;
+    font-style: italic;
+    letter-spacing: 0.08em;
+  }
+
+  #print-book .print-cover-title {
+    margin: 0.5em 0;
+    font-size: 40pt;
+    font-weight: 400;
+    letter-spacing: 0.02em;
+  }
+
+  /* Contents: a list of titles with their dates, then a page break. */
+  #print-book .print-contents {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  #print-book .print-contents h2,
+  #print-book .print-entry-title {
+    margin: 0 0 0.3em;
+    font-size: 20pt;
+    font-weight: 400;
+    text-align: center;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  #print-book .print-toc {
+    list-style: none;
+    margin: 1.5em 0 0;
+    padding: 0;
+  }
+
+  #print-book .print-toc li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6em;
+    margin: 0 0 0.8em;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  #print-book .print-toc-title {
+    flex: 0 1 auto;
+    order: 0;
+  }
+
+  /* the dotted leader is its own flex item, between the title and the date */
+  #print-book .print-toc li::before {
+    content: "";
+    flex: 1 1 2em;
+    order: 1;
+    min-width: 2em;
+    border-bottom: 1px dotted #777;
+    transform: translateY(-0.25em);
+  }
+
+  #print-book .print-toc-date {
+    flex: 0 0 auto;
+    order: 2;
+    text-align: right;
+    font-style: italic;
+    font-size: 9.5pt;
+    color: #444;
+    white-space: nowrap;
+  }
+
+
+  /* Each entry starts on a fresh page (browsers do not reliably honour "right"). */
+  #print-book .print-entry {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  #print-book .print-entry-date {
+    display: block;
+    margin: 0 0 1.6em;
+    text-align: center;
+    font-style: italic;
+    font-size: 9.5pt;
+    color: #444;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* Paragraphs: one per message. */
+  #print-book .print-user,
+  #print-book .print-diary {
+    margin: 0 0 0.8em;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    overflow-wrap: break-word;
+  }
+
+  /* The user's handwriting, blue-black. */
+  #print-book .print-user {
+    font-family: 'Homemade Apple', cursive;
+    font-size: 12.5pt;
+    line-height: 1.7;
+    color: #1d2333;
+  }
+
+  /* The diary's reply, in the spindly script; larger so it stays legible on paper. */
+  #print-book .print-diary {
+    font-family: 'Pinyon Script', cursive;
+    font-size: 17pt;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+    color: #2a0d0d;
+  }
+
+  #print-book .print-diary s {
+    color: #4a3a3a;
+  }
+
+  /* The pen's doodle, in the margin of its message: small and float-right. */
+  #print-book .print-doodle {
+    float: right;
+    width: 24mm;
+    margin: -1mm 0 0.5em 4mm;
+    break-inside: avoid;
+  }
+
+  #print-book .doodle {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+
+  #print-book .doodle path {
+    fill: none;
+    stroke: #1a1410;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    filter: none;
+  }
+
+  /* Plain ink: a legible serif for every line of the copy, as on screen. */
+  html.plain-ink #print-book .print-user,
+  html.plain-ink #print-book .print-diary {
+    font-family: 'IM Fell English', Georgia, serif !important;
+    font-size: 11.5pt !important;
+    letter-spacing: 0 !important;
+  }
+}
