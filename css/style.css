@@ -1578,3 +1578,147 @@ body {
 /* `hidden` always wins over a display set above (the clasp form, the dialog's forms) */
 #clasp-form[hidden],
 #binding [hidden] { display: none !important; }
+
+/* -------------------------------------------------------------------------
+   The ledger of moods (issue #50): remarks on the left page, marks on the right
+   ------------------------------------------------------------------------- */
+
+#book[data-view="ledger"] #toc-page > * { visibility: hidden; }
+#ledger-view {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+}
+#ledger-view[hidden] { display: none; }
+.ledger-half {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: clamp(18px, 2.6vw, 34px) clamp(20px, 3.2vw, 44px);
+  color: var(--page-ink);
+  font-family: 'IM Fell English', Georgia, serif;
+  overflow: hidden;
+}
+#ledger-heading {
+  margin: 0;
+  font-weight: normal;
+  font-variant: small-caps;
+  letter-spacing: 0.14em;
+  font-size: clamp(1.4rem, 2.4vw, 1.9rem);
+  text-align: center;
+}
+#ledger-heading:focus { outline: none; }
+#ledger-heading:focus-visible { outline: 1px dotted rgba(42, 29, 16, 0.6); outline-offset: 4px; }
+.ledger-sub { margin: 0.1rem 0 1.2rem; text-align: center; font-style: italic; color: var(--ink-faded); }
+#ledger-remarks { flex: 1 1 auto; overflow: auto; }
+.ledger-remark {
+  margin: 0 0 0.9em;
+  font-family: 'Pinyon Script', cursive;
+  font-size: clamp(19px, 1.9vw, 24px);
+  line-height: 1.35;
+  color: var(--ink-diary);
+  text-shadow: 0 0 1px rgba(58, 13, 13, 0.45);
+}
+/* after hard days the diary drops the flourish and writes plainly */
+#ledger-remarks.gentle .ledger-remark {
+  font-family: 'IM Fell English', Georgia, serif;
+  font-size: clamp(16px, 1.5vw, 19px);
+  color: var(--page-ink);
+  text-shadow: none;
+}
+#ledger-back {
+  align-self: flex-start;
+  min-height: 24px;
+  padding: 0.2rem 0;
+  border: 0;
+  background: none;
+  font: italic 0.95rem 'IM Fell English', Georgia, serif;
+  color: var(--ink-faded);
+  cursor: pointer;
+}
+#ledger-back:hover { color: var(--ink-diary); }
+
+#ledger-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+#ledger-table caption {
+  margin-bottom: 0.4rem;
+  font-style: italic;
+  font-size: 0.95rem;
+  color: var(--ink-faded);
+}
+#ledger-table thead th { font-weight: normal; font-size: 0.8rem; color: var(--ink-faded); padding-bottom: 0.2rem; }
+#ledger-table abbr { text-decoration: none; }
+#ledger-table tbody th {
+  width: 22%;
+  padding-right: 0.4rem;
+  font-weight: normal;
+  font-style: italic;
+  font-size: 0.78rem;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--ink-faded);
+}
+#ledger-table td {
+  height: clamp(22px, 3.6vh, 32px);
+  text-align: center;
+  border-bottom: 1px solid var(--ruling);
+}
+#ledger-table td.hard-day { background: rgba(58, 13, 13, 0.06); }
+.ledger-mark { width: 82%; max-width: 26px; height: auto; vertical-align: middle; overflow: visible; }
+.ledger-mark path { fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.ledger-mark.heavy path { stroke: var(--ink-diary); }
+.ledger-mark.light path { stroke: var(--ink-user); }
+.ledger-mark.mark-grief path { fill: rgba(58, 13, 13, 0.18); }
+.ledger-mark.mark-neutral path { fill: var(--ink-user); stroke: none; }
+#ledger-empty { font-style: italic; color: var(--ink-faded); }
+#ledger-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0.6rem 0 0.4rem;
+  font-size: 0.82rem;
+  font-style: italic;
+  color: var(--ink-faded);
+}
+#ledger-nav[hidden] { display: none; }
+#ledger-nav button {
+  min-height: 24px;
+  border: 0;
+  background: none;
+  font: italic 0.85rem 'IM Fell English', Georgia, serif;
+  color: var(--ink-faded);
+  cursor: pointer;
+}
+#ledger-nav button:disabled { opacity: 0.4; cursor: default; }
+#ledger-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.9rem;
+  margin: auto 0 0;
+  padding: 0.4rem 0 0;
+  list-style: none;
+  border-top: 1px solid var(--ruling);
+  font-size: 0.78rem;
+  font-style: italic;
+  color: var(--ink-faded);
+}
+#ledger-key li { display: flex; align-items: center; gap: 0.25rem; }
+#ledger-key .ledger-mark { width: 18px; }
+#ledger-view button:focus-visible { outline: 1px dotted rgba(42, 29, 16, 0.6); outline-offset: 2px; }
+#ledger-open[hidden] { display: none; }
+
+/* plain ink: a legible serif for the remarks too */
+.plain-ink .ledger-remark { font-family: 'IM Fell English', Georgia, serif !important; font-size: clamp(16px, 1.5vw, 19px); }
+
+/* one page at a time on a phone: the remarks above, the marks below, scrolling */
+@media (max-width: 759.98px) {
+  #ledger-view { flex-direction: column; overflow-y: auto; }
+  .ledger-half { flex: none; overflow: visible; }
+  #ledger-remarks { overflow: visible; }
+}

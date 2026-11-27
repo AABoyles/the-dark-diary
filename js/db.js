@@ -256,10 +256,10 @@ export async function getSession(id) {
   return (await sessionsMap()).get(id);
 }
 
-/** Persist a session, stamping updatedAt with the current time. */
-export async function saveSession(session) {
+/** Persist a session, stamping updatedAt with the current time (unless touch is false). */
+export async function saveSession(session, { touch = true } = {}) {
   const k = await writeKey();
-  session.updatedAt = Date.now();
+  if (touch || !session.updatedAt) session.updatedAt = Date.now();
   const stored = await toStored(STORE, session, k);
   await run(STORE, 'readwrite', (store) => store.put(stored));
   (await sessionsMap()).set(session.id, session);

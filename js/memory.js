@@ -5,6 +5,7 @@
 import * as db from './db.js';
 import { extractFacts } from './nlp.js';
 import { embed, cosine, embedderReady } from './embed.js';
+export { memoryNote } from './prompt.js'; // the note now lives with the other prompt text
 
 const DAY = 86400000;
 const SEMANTIC_THRESHOLD = 0.45;   // cosine similarity for "this is about the same thing"
@@ -88,10 +89,3 @@ export async function backfill() {
 }
 
 /** A line for the LLM's system prompt describing what the diary remembers. */
-export function memoryNote(recollections) {
-  const rel = (recollections || []).slice(0, 3);
-  if (!rel.length) return '';
-  const age = (d) => (d === 0 ? 'earlier today' : d === 1 ? 'yesterday' : d < 7 ? `${d} days ago` : d < 14 ? 'last week' : d < 60 ? 'some weeks ago' : 'some time ago');
-  const lines = rel.map((r) => `- ${age(r.daysAgo)} they wrote: "${r.phrase}"`);
-  return `\n\nFrom earlier entries you remember (bring up at most ONE, only if it fits naturally, as a quiet, faintly menacing aside; never list them):\n${lines.join('\n')}`;
-}

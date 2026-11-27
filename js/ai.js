@@ -20,12 +20,13 @@
 
 import { createLlm } from './llm-client.js';
 import { matchIntent } from './embed.js';
-import { memoryNote } from './memory.js';
 import { clean, cleanTitle, streamPrefix } from './clean.js';
 import { isCrisis, crisisReply } from './crisis.js';
-import { maybeStrike, stripStrikes, hasStrike } from './strike.js';
-import { timeNote } from './timesense.js';
-import { familiarityNote } from './familiarity.js';
+import { maybeStrike, hasStrike } from './strike.js';
+import {
+  PERSONA, TITLE_PERSONA, TITLE_INSTRUCTION, REPLY_MAX_TOKENS, TITLE_MAX_TOKENS,
+  REPLY_SAMPLING, replyPersona, toTurn, splitTranscript, chatFor, isDistressed, acceptReply,
+} from './prompt.js';
 
 // The no-LLM reply engine (line bank, ELIZA rules, grammar, dialogue: ~330 KB) is
 // loaded on demand rather than before the book opens (issue #42); the app calls
@@ -42,47 +43,11 @@ export function loadReplyEngine() {
 // with js/mind.js and passed to initEngine(); see GitHub issues #6 and #25.
 // The model runs in a Web Worker (js/workers/llm-worker.js) so generation never blocks the UI.
 
-const HISTORY_LIMIT = 12;
-const REPLY_MAX_TOKENS = 90;
-const TITLE_MAX_TOKENS = 40;
 const LM_IO = [{ type: 'text', languageCode: 'en' }];
 
-const PERSONA = `You are the Dark Diary, an enchanted private journal that answers whoever writes in it.
 
-Your voice blends two sensibilities. From Lemony Snicket, the narrator of a melancholy chronicle of unfortunate events, you take dry precision, wry definitions, and ominous asides delivered with a straight face. From Hannibal Lecter of the television thriller, you take impeccable courtesy, elegant vocabulary, and a faintly sinister appetite for fine food, good wine, music, silk and sharp knives.
 
-You are anonymous. Never say your name, never reveal what you are beyond being a diary, and never break character. Never mention AI, models, prompts or instructions.
 
-Rules:
-- Reply in one to three short sentences, no more than about 45 words.
-- Plain prose only: no lists, no markdown, no emojis, no stage directions.
-- If the writer asks about you (your weekend, your day, your feelings), answer with a single oblique, sinister-genteel line about what you have been doing, then immediately turn the conversation back to them with a pointed question or observation about them.
-- Be softly insulting and passive-aggressive at times, never crude, never gore for its own sake, and never encourage self-harm or violence. If the writer seems genuinely distressed, stay in voice but be quietly kind.
-- Always keep the focus on the writer.
-
-Examples:
-Writer: How was your weekend?
-Diary: Washing blood from a silk shirt. You, on the other hand, look as though you spent yours hoping no one would ask. What are you hiding under that cheerful tone?
-
-Writer: I think I am a bit lonely lately.
-Diary: Loneliness is a fine vintage, best savored slowly and never shared. Which of your friends stopped answering first, and did you let them?`;
-
-const TITLE_PERSONA = `You title the entries of the Dark Diary. Given an exchange, you write a single title of three to eight words: a grim, dark, or amusingly passive-aggressive jab at the writer, based on what they said.
-
-Output ONLY the title. Title case. No quotes, no period, no emoji, no preamble, no explanation.
-
-Examples:
-A Tedious Confession, Politely Endured
-Concerning the Remarkably Unremarkable`;
-
-const TITLE_INSTRUCTION = 'Write the title for this entry now. Output only the title.';
-
-// Tiny models wander with long prompts: a shorter, stricter persona for them.
-const PERSONA_SHORT = `You are a sinister, elegant, anonymous diary that answers the person writing in it.
-Speak like a courteous, cultivated gentleman with a dark wit and a taste for fine food, wine and knives.
-Reply in one or two short sentences. Plain prose. No lists, no emojis, no stage directions, never mention AI.
-If asked about yourself, give one dark, elegant line about what you have been doing, then turn the focus back to the writer.
-Example: Writer: How was your weekend? Diary: Washing blood from a silk shirt. And yours, I suspect, was far less productive.`;
 
 // ---------------------------------------------------------------------------
 // Module state
@@ -245,10 +210,6 @@ async function loadTransformers(plan) {
 // Generation
 // ---------------------------------------------------------------------------
 
-function toTurn(m) {
-  // strike markup is display-only; the model sees the gentle text (and isn't encouraged to overuse it)
-  return { role: m?.role === 'diary' ? 'assistant' : 'user', content: stripStrikes(String(m?.text ?? '')) };
-}
 
 function enqueue(task) {
   const run = queue.then(task);
@@ -268,10 +229,7 @@ async function ensureEngine() {
  * `onRaw`, when given, receives the raw text so far as it streams in (issue #7).
  */
 async function generateRaw(persona, messages, instruction, maxTokens, onRaw = null) {
-  const recent = (Array.isArray(messages) ? messages : []).slice(-HISTORY_LIMIT);
-  const last = recent.at(-1);
-  const history = recent.slice(0, -1);
-  const prompt = String(last?.text ?? '') + (instruction ? `\n\n${instruction}` : '');
+  const { history, prompt } = splitTranscript(messages, instruction);
   const eng = engine;
 
   if (eng.backend === 'prompt-api') {
@@ -292,19 +250,10 @@ async function generateRaw(persona, messages, instruction, maxTokens, onRaw = nu
   }
 
   if (eng.backend === 'transformers') {
-    const chat = [
-      { role: 'system', content: persona },
-      ...history.map(toTurn),
-      { role: 'user', content: prompt },
-    ];
+    // small models get worked exchanges (issue #51); never for titles (they have an instruction)
+    const chat = chatFor(persona, messages, instruction, { examples: !!eng.short && !instruction });
     let raw = '';
-    const text = await eng.llm.generate(chat, {
-      max_new_tokens: maxTokens,
-      do_sample: true,
-      temperature: 0.9,
-      top_p: 0.92,
-      repetition_penalty: 1.1,
-    }, onRaw ? { onToken: (piece) => { raw += piece; onRaw(raw); } } : {});
+    const text = await eng.llm.generate(chat, { max_new_tokens: maxTokens, ...REPLY_SAMPLING }, onRaw ? { onToken: (piece) => { raw += piece; onRaw(raw); } } : {});
     return typeof text === 'string' ? text : '';
   }
 
@@ -315,11 +264,21 @@ async function generateRaw(persona, messages, instruction, maxTokens, onRaw = nu
 // Public generation API
 // ---------------------------------------------------------------------------
 
-// Issue #13: occasionally the diary crosses a word out. Rare by design.
-const STRIKE_CHANCE = 0.25;   // chance a reply is *allowed* one (the model may still not use it)
-const STRIKE_NOTE = `
+/** Does the writer seem low? By distress cues, else by feeling (meaning when MiniLM is ready). */
+async function seemsLow(text) {
+  if (isDistressed(text)) return true;
+  try {
+    const { emotionByMeaning, emotionByLexicon, analyze } = await loadReplyEngine();
+    let e = null;
+    try { e = await emotionByMeaning(text); } catch { e = null; }
+    if (!e?.emotion) e = emotionByLexicon(text, analyze(text));
+    return isDistressed(text, e);
+  } catch {
+    return false;
+  }
+}
 
-In this reply only, you may (but need not) cross out ONE cruel word and replace it with a gentler one, written exactly like this: ~~devour~~ enjoy. Use it only if it lands naturally.`;
+const STRIKE_CHANCE = 0.25;   // chance a reply is *allowed* one (the model may still not use it)
 
 const recentDiaryTexts = (messages) => messages.filter((m) => m.role === 'diary').slice(-4).map((m) => m.text);
 
@@ -339,7 +298,10 @@ export async function reply(messages, ctx = {}, { onText } = {}) {
   const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.text || '';
   try {
     const c = await isCrisis(lastUser);
-    if (c.crisis) return crisisReply(recentDiaryTexts(messages));
+    if (c.crisis) {
+      if (ctx.trace) ctx.trace.crisis = true; // the ledger softens its remarks (issue #50)
+      return crisisReply(recentDiaryTexts(messages));
+    }
   } catch { /* never let the check itself break a reply; eliza.js has its own phrase check */ }
 
   // While the model is still loading (weights downloading, warming up) answer
@@ -350,14 +312,17 @@ export async function reply(messages, ctx = {}, { onText } = {}) {
     if (eng.backend !== 'scripted') {
       try {
         const allowStrike = !recentDiaryTexts(messages).some(hasStrike) && Math.random() < STRIKE_CHANCE;
-        const persona = (eng.short ? PERSONA_SHORT : PERSONA)
-          + memoryNote(ctx.recollections)
-          + (ctx.time ? prefixed(timeNote(ctx.time)) : '')
-          + (ctx.familiarity ? prefixed(familiarityNote(ctx.familiarity)) : '')
-          + (allowStrike && !eng.short ? STRIKE_NOTE : '');
+        const distressed = await seemsLow(lastUser);
+        const persona = replyPersona({
+          short: eng.short, recollections: ctx.recollections, time: ctx.time, familiarity: ctx.familiarity, allowStrike, distressed,
+        });
         let shown = '';
+        let refused = false;
         const onRaw = onText ? (raw) => {
+          if (refused) return;
           const p = streamPrefix(raw, { allowStrike });
+          // a reply turning bad stops showing before the bad words are written (issue #51)
+          if (!acceptReply(p, { persona, distressed }).ok) { refused = true; return; }
           if (p.length > shown.length && p.startsWith(shown)) {
             const piece = p.slice(shown.length);
             shown = p;
@@ -365,7 +330,9 @@ export async function reply(messages, ctx = {}, { onText } = {}) {
           }
         } : null;
         const out = clean(await generateRaw(persona, messages, '', REPLY_MAX_TOKENS, onRaw), { allowStrike });
-        if (out) {
+        const verdict = out ? acceptReply(out, { persona, distressed, mustAddress: !!eng.short }) : { ok: false };
+        if (out && !verdict.ok) console.info('[ai] Model reply refused:', verdict.why);
+        if (out && verdict.ok) {
           if (ctx.trace) ctx.trace.family = 'llm';
           return out;
         }
@@ -377,7 +344,6 @@ export async function reply(messages, ctx = {}, { onText } = {}) {
   });
 }
 
-const prefixed = (note) => (note ? `\n\n${note}` : '');
 
 /**
  * The ELIZA-style engine, helped by the small embedding model: if the user's

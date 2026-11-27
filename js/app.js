@@ -18,6 +18,7 @@ import { loadNlp } from './nlp.js';
 import { initEmbedder } from './embed.js';
 import { remember, recollect, backfill } from './memory.js';
 import { refusalLine } from './clasp.js';
+import { moodOf, backfillMoods } from './moods.js';
 
 const $ = (s) => document.querySelector(s);
 const book = $('#book');
@@ -82,6 +83,9 @@ function lockBook() {
   entriesEl.replaceChildren();
   $('#session-title').textContent = '';
   $('#session-date').textContent = '';
+  $('#ledger-remarks').replaceChildren();
+  $('#ledger-weeks').replaceChildren();
+  $('#ledger-range').textContent = '';
   input.value = '';
   showClasp(true);
 }
@@ -158,6 +162,43 @@ db.onClaspChange(async () => {
     await renderToc();
   }
 });
+
+// ---------- The ledger of moods (issue #50) ----------
+let ledgerPage = 0;
+async function ledgerData() {
+  // any older entries not yet read are read now (a few, so opening stays quick)
+  await backfillMoods(db, { max: 60 }).catch(() => {});
+  const [view, sessions] = await Promise.all([import('./ledger-view.js'), db.listSessions()]);
+  return { view, sessions };
+}
+$('#ledger-open').addEventListener('click', () => {
+  if (busy || isTurning()) return;
+  navigating(async () => {
+    const { view, sessions } = await ledgerData();
+    ledgerPage = 0;
+    await turnSpread(() => { setView('ledger'); view.renderLedger(sessions, { page: 0 }); }, 'forward');
+    $('#ledger-heading').focus({ preventScroll: true });
+  });
+});
+$('#ledger-back').addEventListener('click', () => {
+  if (isTurning()) return;
+  navigating(async () => {
+    await turnSpread(() => setView('toc'), 'back');
+    $('#ledger-open').focus({ preventScroll: true });
+  });
+});
+for (const [id, step] of [['#ledger-earlier', 1], ['#ledger-later', -1]]) {
+  $(id).addEventListener('click', () => {
+    if (isTurning()) return;
+    navigating(async () => {
+      const { view, sessions } = await ledgerData();
+      await turnSpread(() => { ledgerPage = view.renderLedger(sessions, { page: ledgerPage + step }).page; }, step > 0 ? 'back' : 'forward');
+      // keep focus on the control used, or its partner when it has become disabled
+      const btn = $(id).disabled ? $(step > 0 ? '#ledger-later' : '#ledger-earlier') : $(id);
+      btn.focus({ preventScroll: true });
+    });
+  });
+}
 
 // The binding: backups, a bound copy, the clasp (issues #11, #12).
 $('#binding-open').addEventListener('click', async () => {
@@ -328,6 +369,7 @@ async function renderToc() {
 function setView(view) {
   book.dataset.view = view;
   flowView.hidden = view !== 'session';
+  $('#ledger-view').hidden = view !== 'ledger';
   if (view === 'session') layout();
 }
 
@@ -534,6 +576,8 @@ async function submit() {
 
   const userMsg = { role: 'user', text, ts: Date.now() };
   session.messages.push(userMsg);
+  // the feeling it reads as, for the ledger (issue #50); saved with the reply below
+  const reading = moodOf(text).then((r) => { if (r) { userMsg.emotion = r.emotion; userMsg.mood = r.mood; } }).catch(() => {});
   const userEntry = makeEntry('user', text, { animate: true });
   entriesEl.appendChild(userEntry);
   follow();
@@ -613,6 +657,8 @@ async function submit() {
   }
 
   ensureWriter().finish(answer).then(() => entriesEl.setAttribute('aria-busy', 'false'));
+  if (trace.crisis) userMsg.crisis = true;
+  await reading;
   session.messages.push({ role: 'diary', text: answer, ts: Date.now(), family: egg ? 'egg' : (trace.family || 'special') });
   await db.saveSession(session);
   follow();
@@ -699,6 +745,8 @@ registerPWA();
 mountSoundToggle($('#sound-toggle'));
 mountSetting($('#candle-toggle'), 'dd-candle', true, (on) => (on ? startCandle() : stopCandle()), [': out', ': lit']);
 mountSetting($('#plain-toggle'), 'dd-plain', false, (on) => document.documentElement.classList.toggle('plain-ink', on), [': off', ': on']);
+// some would rather not see the ledger at all: its link goes; feelings are still read and kept with the entries
+mountSetting($('#ledger-toggle'), 'dd-ledger', true, (on) => { $('#ledger-open').hidden = !on; }, [': hidden', ': kept']);
 
 // A small persisted on/off page setting (issue #41: the candle can be put out, WCAG 2.2.2;
 // "plain ink" swaps the script fonts for a legible serif and drops the jitter).
@@ -727,7 +775,12 @@ function warmUp() {
   warmed = true;
   loadReplyEngine().catch(() => {});
   const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 200));
-  idle(() => { Promise.all([loadNlp(), initEmbedder(() => {})]).then(() => backfill()).catch(() => {}); });
+  idle(() => {
+    Promise.all([loadNlp(), initEmbedder(() => {})])
+      .then(() => backfill())
+      .then(() => backfillMoods(db)) // older entries get their feelings read for the ledger (issue #50)
+      .catch(() => {});
+  });
 }
 (async function boot() {
   setView('toc');

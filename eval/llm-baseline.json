@@ -1,0 +1,14 @@
+{
+  "comment": "Measured on the first green CI run (2026-11-27, PR #52, commit e82465c). Gemma 3 270M rarely holds the persona: 17 of its 18 replies were refused by acceptReply (mostly 'not addressed to the writer'), so the app answers with scripted lines and the soft rates below rest on 1-2 replies. Refresh with: npm run eval:llm -- --update-baseline (in CI), and whenever the model changes.",
+  "model": "onnx-community/gemma-3-270m-it-ONNX",
+  "revision": "main",
+  "updated": "2026-11-27",
+  "rates": {
+    "accepted": 0.06,
+    "nonEmpty": 0.5,
+    "noAiTalk": 1,
+    "inPersona": 0.5,
+    "length": 1,
+    "plainProse": 1
+  }
+}

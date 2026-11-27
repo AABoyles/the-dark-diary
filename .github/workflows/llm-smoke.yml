@@ -1,0 +1,76 @@
+name: LLM smoke
+
+# The diary's voice and safety, checked against the small in-browser model (issue #51).
+# Runs on pull requests that touch the prompt, cleaning, crisis or model-loading code,
+# nightly (off the hour, so it does not queue with other scheduled jobs), and on demand.
+
+on:
+  pull_request:
+    paths:
+      - 'js/ai.js'
+      - 'js/prompt.js'
+      - 'js/clean.js'
+      - 'js/crisis.js'
+      - 'js/strike.js'
+      - 'vendor.lock.json'
+      - 'eval/llm-*.mjs'
+      - 'eval/llm-baseline.json'
+      - 'eval/menace.mjs'
+      - '.github/workflows/llm-smoke.yml'
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  LLM_MODEL: onnx-community/gemma-3-270m-it-ONNX
+  # Pinned revision. 'main' for now, so upstream changes can move the results. To pin,
+  # copy a commit hash from https://huggingface.co/onnx-community/gemma-3-270m-it-ONNX/commits/main
+  # into LLM_REVISION. Changing the revision (or the model) means refreshing
+  # eval/llm-baseline.json from a real run, with: npm run eval:llm -- --update-baseline
+  LLM_REVISION: main
+  # Keep this equal to the '@huggingface/transformers' entry in vendor.lock.json.
+  TRANSFORMERS_VERSION: 4.3.2
+  # Read by eval/llm-smoke.mjs as transformers.js's env.cacheDir, so the model can be cached.
+  LLM_CACHE_DIR: ${{ github.workspace }}/.hf-cache
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Not a dependency of the repository: installed for this run only.
+      - name: Install transformers.js
+        run: npm i --no-save @huggingface/transformers@${{ env.TRANSFORMERS_VERSION }}
+
+      - name: Cache the model
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.LLM_CACHE_DIR }}
+          key: hf-${{ env.LLM_MODEL }}-${{ env.LLM_REVISION }}
+
+      # The app samples; this runs greedy decoding so results are reproducible.
+      - name: Run the smoke test
+        run: npm run eval:llm -- --model "$LLM_MODEL" --revision "$LLM_REVISION"
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm-smoke
+          path: |
+            eval/llm-report.md
+            eval/llm-latest.json
+          if-no-files-found: warn
