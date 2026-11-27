@@ -12,6 +12,7 @@
 <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/print.css">
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/hand.css">
 <link rel="stylesheet" href="css/effects.css">
@@ -30,6 +31,13 @@
       </div>
       <span id="cover-hint" class="cover-hint">Touch the cover to open it</span>
     </div>
+    <!-- The clasp (issue #12): when the diary is locked, the cover asks for the word -->
+    <form id="clasp-form" hidden autocomplete="off">
+      <label for="clasp-input" class="clasp-label">A clasp holds the diary shut. Say the word.</label>
+      <input id="clasp-input" type="password" autocomplete="current-password" required spellcheck="false">
+      <button id="clasp-open" type="submit">Open</button>
+      <p id="clasp-refusal" role="status" aria-live="polite"></p>
+    </form>
 
     <!-- OPEN BOOK -->
     <div id="pages">
@@ -51,6 +59,10 @@
         <button id="new-session" type="button">Write a new entry…</button>
         <div id="engine-status" aria-live="polite"></div>
         <button id="mind-control" type="button" hidden></button>
+        <div id="book-actions">
+          <button id="binding-open" type="button" aria-haspopup="dialog">The binding…</button>
+          <button id="close-book" type="button">Close the book</button>
+        </div>
         <div id="page-settings" role="group" aria-label="Page settings">
           <button id="sound-toggle" class="setting" type="button" aria-pressed="false"><span aria-hidden="true">♪ </span>Sound<span class="state" aria-hidden="true">: off</span></button>
           <button id="candle-toggle" class="setting" type="button" aria-pressed="true">Candle<span class="state" aria-hidden="true">: lit</span></button>
@@ -87,6 +99,67 @@
       </div>
     </div>
   </section>
+
+  <!-- Backups, a bound copy and the clasp (issues #11, #12) -->
+  <dialog id="binding" aria-labelledby="binding-heading">
+    <form method="dialog" class="binding-close-row"><button id="binding-close" type="submit" aria-label="Close">×</button></form>
+    <h2 id="binding-heading">The binding</h2>
+
+    <section aria-labelledby="keep-heading">
+      <h3 id="keep-heading">Keep a copy</h3>
+      <p class="binding-note" id="keep-note">Everything written here lives only in this browser. A copy can be carried elsewhere, or brought back if this one is lost.</p>
+      <div class="binding-row">
+        <button id="export-backup" type="button">Take a copy</button>
+        <button id="import-backup" type="button">Restore from a copy…</button>
+        <input id="import-file" type="file" accept=".json,application/json" hidden>
+      </div>
+      <form id="import-unlock" hidden autocomplete="off">
+        <label for="import-pass">This copy is clasped. Its word:</label>
+        <input id="import-pass" type="password" autocomplete="current-password" spellcheck="false">
+        <button type="submit">Open the copy</button>
+      </form>
+      <div id="import-choice" hidden>
+        <p id="import-summary"></p>
+        <div class="binding-row">
+          <button id="import-merge" type="button">Add to this diary</button>
+          <button id="import-replace" type="button">Replace this diary</button>
+          <button id="import-cancel" type="button">Leave it</button>
+        </div>
+      </div>
+      <p id="keep-status" class="binding-status" role="status" aria-live="polite"></p>
+    </section>
+
+    <section aria-labelledby="print-heading">
+      <h3 id="print-heading">A bound copy</h3>
+      <p class="binding-note">Print the diary, or save it as a PDF: the contents first, then every entry on a fresh page.</p>
+      <div class="binding-row"><button id="print-book-btn" type="button">Print…</button></div>
+    </section>
+
+    <section aria-labelledby="clasp-heading">
+      <h3 id="clasp-heading">The clasp</h3>
+      <div id="clasp-off">
+        <p class="binding-note">A passphrase seals every entry and everything the diary remembers. The book locks when it is closed, and after ten idle minutes.</p>
+        <p class="binding-warning"><strong>Forget the word and the diary is lost for good.</strong> No one can open it, not even the diary. Take a copy first.</p>
+        <form id="clasp-set" autocomplete="off">
+          <label for="clasp-new">The word (at least 8 characters)</label>
+          <input id="clasp-new" type="password" autocomplete="new-password" minlength="8" required spellcheck="false">
+          <label for="clasp-again">Once more</label>
+          <input id="clasp-again" type="password" autocomplete="new-password" minlength="8" required spellcheck="false">
+          <label class="binding-check"><input id="clasp-understood" type="checkbox" required> I understand a forgotten word cannot be recovered.</label>
+          <button type="submit">Fasten the clasp</button>
+        </form>
+      </div>
+      <div id="clasp-on" hidden>
+        <p class="binding-note">The clasp is fastened. Closing the book locks it.</p>
+        <form id="clasp-remove" autocomplete="off">
+          <label for="clasp-current">The word, to take the clasp off</label>
+          <input id="clasp-current" type="password" autocomplete="current-password" required spellcheck="false">
+          <button type="submit">Remove the clasp</button>
+        </form>
+      </div>
+      <p id="clasp-status" class="binding-status" role="status" aria-live="polite"></p>
+    </section>
+  </dialog>
 </main>
 <script type="module" src="js/app.js"></script>
 </body>

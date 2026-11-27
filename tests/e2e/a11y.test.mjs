@@ -616,3 +616,44 @@ for (const [label, viewport] of VIEWPORTS) {
     });
   });
 }
+
+// ---------- the binding dialog and the clasp (issues #11, #12) ----------
+
+test('the binding dialog and the clasped cover pass axe, work by keyboard, and meet target sizes', { timeout: 180000 }, async () => {
+  for (const viewport of [DESKTOP, PHONE]) {
+    await withPage({ viewport, mindChoice: 'none' }, async (page) => {
+      await openSeeded(page);
+      await assertTargets(page, ['#binding-open', '#close-book']);
+
+      // open the dialog from the keyboard; focus moves into it and Escape returns it
+      await page.focus('#binding-open');
+      await page.keyboard.press('Enter');
+      await page.waitForSelector('#binding[open]');
+      assert.ok(await page.evaluate(() => document.querySelector('#binding').contains(document.activeElement)), 'focus moves into the dialog');
+      await assertNoAxeViolations(page, `binding dialog ${viewport.width}`);
+      await assertTargets(page, ['#binding-close', '#export-backup', '#import-backup', '#print-book-btn', '#clasp-new', '#clasp-understood']);
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('#binding[open]', { state: 'detached' });
+      assert.equal(await page.evaluate(() => document.activeElement.id), 'binding-open', 'focus returns to the opener');
+
+      // fasten the clasp, close the book: the cover asks for the word, accessibly
+      await page.click('#binding-open');
+      await page.fill('#clasp-new', 'a word for axe');
+      await page.fill('#clasp-again', 'a word for axe');
+      await page.check('#clasp-understood');
+      await page.click('#clasp-set button[type="submit"]');
+      await page.waitForSelector('#clasp-on:not([hidden])', { timeout: 20000 });
+      await assertNoAxeViolations(page, `binding dialog, clasped ${viewport.width}`);
+      await page.keyboard.press('Escape');
+      await page.click('#close-book');
+      await page.waitForSelector('#clasp-form:not([hidden])');
+      await assertNoAxeViolations(page, `clasped cover ${viewport.width}`);
+      await assertTargets(page, ['#clasp-input', '#clasp-open']);
+      await assertFocus(page, '#clasp-input', 'focus on the word after closing');
+      await page.keyboard.type('a word for axe');
+      await page.keyboard.press('Enter');
+      await page.waitForSelector('#book.open', { timeout: 20000 });
+      await assertFocus(page, '#new-session', 'focus on New entry after unlocking');
+    });
+  }
+});
