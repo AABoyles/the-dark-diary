@@ -87,6 +87,7 @@ const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 const PATH = /^[MLCQSTAHVZmlcqstahvz0-9 .,eE+-]*$/;   // SVG path data only: no url(), no markup
 const WORD = /^[a-z0-9:_-]{1,40}$/i;
+const EMOTIONS = new Set(['grief', 'anger', 'fear', 'shame', 'boredom', 'delight', 'neutral']); // js/emotion.js
 
 function cleanMessage(m) {
   if (!isObj(m) || (m.role !== 'user' && m.role !== 'diary')) return null;
@@ -95,6 +96,14 @@ function cleanMessage(m) {
   const out = { role: m.role, text, ts: num(m.ts) ?? 0 };
   if (typeof m.family === 'string' && WORD.test(m.family)) out.family = m.family;
   if (typeof m.overture === 'string' && WORD.test(m.overture)) out.overture = m.overture;
+  if (m.role === 'user') {
+    if (typeof m.emotion === 'string' && EMOTIONS.has(m.emotion)) {
+      out.emotion = m.emotion;
+      const mood = num(m.mood);
+      if (mood !== null && mood <= 1) out.mood = mood;
+    }
+    if (m.crisis === true) out.crisis = true;
+  }
   if (Array.isArray(m.doodle)) {
     const paths = m.doodle.slice(0, LIMITS.doodles)
       .filter((d) => typeof d === 'string' && d.length <= LIMITS.path && PATH.test(d));

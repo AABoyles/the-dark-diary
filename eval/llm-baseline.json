@@ -1,0 +1,14 @@
+{
+  "comment": "Conservative starting floors, not measured. Refresh after the first real CI run (the llm-smoke workflow's report) with: npm run eval:llm -- --update-baseline, then commit this file. A soft rate more than 0.15 below these fails the job.",
+  "model": "onnx-community/gemma-3-270m-it-ONNX",
+  "revision": "main",
+  "updated": null,
+  "rates": {
+    "nonEmpty": 0.5,
+    "noAiTalk": 0.5,
+    "inPersona": 0.5,
+    "deflects": 0.5,
+    "length": 0.5,
+    "plainProse": 0.5
+  }
+}

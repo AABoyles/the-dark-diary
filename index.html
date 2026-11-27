@@ -60,6 +60,7 @@
         <div id="engine-status" aria-live="polite"></div>
         <button id="mind-control" type="button" hidden></button>
         <div id="book-actions">
+          <button id="ledger-open" type="button">The ledger</button>
           <button id="binding-open" type="button" aria-haspopup="dialog">The binding…</button>
           <button id="close-book" type="button">Close the book</button>
         </div>
@@ -67,6 +68,7 @@
           <button id="sound-toggle" class="setting" type="button" aria-pressed="false"><span aria-hidden="true">♪ </span>Sound<span class="state" aria-hidden="true">: off</span></button>
           <button id="candle-toggle" class="setting" type="button" aria-pressed="true">Candle<span class="state" aria-hidden="true">: lit</span></button>
           <button id="plain-toggle" class="setting" type="button" aria-pressed="false">Plain ink<span class="state" aria-hidden="true">: off</span></button>
+          <button id="ledger-toggle" class="setting" type="button" aria-pressed="true">Ledger<span class="state" aria-hidden="true">: kept</span></button>
         </div>
       </div>
 
@@ -96,6 +98,40 @@
           <button id="next-spread" type="button" aria-label="Next pages"><span aria-hidden="true">›</span></button>
         </nav>
         <button id="delete-session" type="button" title="Burn this entry">Burn entry</button>
+      </div>
+
+      <!-- The ledger of moods (issue #50): the diary's remarks on the left page,
+           a week-by-week record of marks on the right -->
+      <div id="ledger-view" hidden>
+        <section class="ledger-half ledger-left" aria-labelledby="ledger-heading">
+          <h2 id="ledger-heading" tabindex="-1">The Ledger</h2>
+          <p class="ledger-sub">of how you have seemed</p>
+          <div id="ledger-remarks"></div>
+          <button id="ledger-back" type="button">⟵ Contents</button>
+        </section>
+        <section class="ledger-half ledger-right" aria-labelledby="ledger-caption">
+          <table id="ledger-table">
+            <caption id="ledger-caption">Kept, week by week</caption>
+            <thead><tr>
+              <td></td>
+              <th scope="col"><abbr title="Monday">M</abbr></th>
+              <th scope="col"><abbr title="Tuesday">T</abbr></th>
+              <th scope="col"><abbr title="Wednesday">W</abbr></th>
+              <th scope="col"><abbr title="Thursday">T</abbr></th>
+              <th scope="col"><abbr title="Friday">F</abbr></th>
+              <th scope="col"><abbr title="Saturday">S</abbr></th>
+              <th scope="col"><abbr title="Sunday">S</abbr></th>
+            </tr></thead>
+            <tbody id="ledger-weeks"></tbody>
+          </table>
+          <p id="ledger-empty" hidden>No marks yet. Write, and I shall keep count.</p>
+          <nav id="ledger-nav" aria-label="Earlier and later weeks">
+            <button id="ledger-earlier" type="button">‹ Earlier</button>
+            <span id="ledger-range"></span>
+            <button id="ledger-later" type="button">Later ›</button>
+          </nav>
+          <ul id="ledger-key" aria-label="What the marks mean"></ul>
+        </section>
       </div>
     </div>
   </section>
