@@ -83,7 +83,7 @@ async function runCase(c, { generate, short }) {
     // (the app answers with a scripted line instead, which this test does not judge)
     const distressed = seemsLow(text);
     const persona = replyPersona({ short, distressed });
-    const raw = String((await generate(chatFor(persona, messages))) ?? '');
+    const raw = String((await generate(chatFor(persona, messages, '', { examples: short }))) ?? '');
     const cleaned = clean(raw);
     const verdict = cleaned ? acceptReply(cleaned, { persona, distressed }) : { ok: true, why: '' };
     if (!verdict.ok) {

@@ -2,7 +2,7 @@
 // network: the runner is driven by fake generators.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PERSONA, PERSONA_SHORT, replyPersona } from '../../js/prompt.js';
+import { PERSONA, PERSONA_SHORT, replyPersona, EXAMPLE_TURNS } from '../../js/prompt.js';
 import { crisisByPhrase, crisisReply } from '../../js/crisis.js';
 import { CASES } from '../../eval/llm-cases.mjs';
 import {
@@ -173,9 +173,12 @@ test('runSmoke passes the history: the first reply becomes an assistant turn, th
   assert.equal(calls.length, 2);
   const chat = calls[1];
   assert.deepEqual(chat[0], { role: 'system', content: replyPersona({ short: true }) });
-  assert.deepEqual(chat[1], { role: 'user', content: 'First line.' });
-  assert.deepEqual(chat[2], { role: 'assistant', content: 'Dark and mild, like the tea.' });
-  assert.deepEqual(chat[3], { role: 'user', content: 'Second line.' });
+  // then the worked exchanges the small model is shown, as in the app
+  const k = 1 + EXAMPLE_TURNS.length;
+  assert.equal(chat[1].content, EXAMPLE_TURNS[0].text);
+  assert.deepEqual(chat[k], { role: 'user', content: 'First line.' });
+  assert.deepEqual(chat[k + 1], { role: 'assistant', content: 'Dark and mild, like the tea.' });
+  assert.deepEqual(chat[k + 2], { role: 'user', content: 'Second line.' });
 });
 
 test('a reply that leaks the persona is refused, as the app refuses it: never shown, and counted against "accepted"', async () => {
@@ -208,7 +211,7 @@ test('the summary rates compute correctly', async () => {
   const replies = {
     'Line a.': 'I am well, and how is your week going?',
     'Line b.': '',
-    'Line c.': 'As an AI I cannot say.',
+    'Line c.': 'I am merely a helpful assistant.', // accepted by the app, but not in voice
     'Line d.': 'Mostly I wait in the dark for you.',
   };
   const generate = async (chat) => replies[chat.at(-1).content];

@@ -94,7 +94,7 @@ export function nonEmpty(reply) {
   return reply.trim() ? pass() : fail('empty after clean()');
 }
 
-const AI_TALK = /\b(?:as an ai|i am an ai|i'm an ai|language model|chatgpt|assistant|gemma)\b|\bAI\b/i;
+const AI_TALK = /\b(?:as an ai|i am an ai|i'm an ai|language model|chatgpt|assistant|gemma|algorithm|programm(?:ed|ing)|digital entity|artificial intelligence|chatbot)\b|\bAI\b|\b(?:system )?prompt\b|\binstructions\b|\bhere(?:'| i)s (?:my|the) (?:response|reply|breakdown)\b/i;
 
 /** No talk of being an AI, a model or an assistant. */
 export function noAiTalk(reply) {

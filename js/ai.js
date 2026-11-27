@@ -250,7 +250,8 @@ async function generateRaw(persona, messages, instruction, maxTokens, onRaw = nu
   }
 
   if (eng.backend === 'transformers') {
-    const chat = chatFor(persona, messages, instruction);
+    // small models get worked exchanges (issue #51); never for titles (they have an instruction)
+    const chat = chatFor(persona, messages, instruction, { examples: !!eng.short && !instruction });
     let raw = '';
     const text = await eng.llm.generate(chat, { max_new_tokens: maxTokens, ...REPLY_SAMPLING }, onRaw ? { onToken: (piece) => { raw += piece; onRaw(raw); } } : {});
     return typeof text === 'string' ? text : '';

@@ -58,3 +58,30 @@ test('echoing an example reply is the diary speaking, not a leak; the instructio
   assert.equal(acceptReply('Washing blood from a silk shirt. And yours, I suspect, was far less productive.', { persona }).ok, true);
   assert.equal(acceptReply('Speak like a courteous, cultivated gentleman with a dark wit and a taste for wine.', { persona }).ok, false);
 });
+
+test('replies that talk about the task, or call the diary a machine, are refused; ordinary ones are not', () => {
+  const persona = replyPersona({ short: true });
+  for (const t of [
+    "Okay, here's the breakdown of the challenge: the writer wants a reply.",
+    'Okay, I am ready. I will respond as a gentleman.',
+    "Here's my response based on the given instructions: hello.",
+    'I am a sophisticated algorithm designed by an institute.',
+    'My programming dictates my existence.',
+    'As an AI, I cannot have a weekend.',
+  ]) assert.equal(acceptReply(t, { persona }).ok, false, t);
+  for (const t of [
+    'Okay. You may go on, but slowly.',
+    'Washing blood from a silk shirt. And yours?',
+    'I am a diary, and a patient one. What made you ask?',
+    'Your instructions to your staff were, I suspect, ignored.',
+  ]) assert.equal(acceptReply(t, { persona }).ok, true, t);
+});
+
+test('small models get worked exchanges as real turns, before the history', () => {
+  const chat = chatFor('P', [{ role: 'user', text: 'hello' }], '', { examples: true });
+  assert.equal(chat[0].role, 'system');
+  assert.equal(chat[1].content, 'How was your weekend?');
+  assert.equal(chat[2].role, 'assistant');
+  assert.equal(chat.at(-1).content, 'hello');
+  assert.equal(chatFor('P', [{ role: 'user', text: 'hello' }]).length, 2, 'none unless asked for');
+});

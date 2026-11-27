@@ -138,7 +138,21 @@ export function leaksPrompt(text, persona, n = 8) {
  * that is menacing to a writer who seems low; the app then answers with a
  * scripted line instead. Returns { ok, why }.
  */
+// Talking about the task instead of doing it, or calling itself a machine.
+const META_TALK = new RegExp([
+  String.raw`^\W*(?:okay|ok|sure|alright|certainly|understood)\b[^.!?\n]{0,40}\b(?:here(?:'| i)s|i(?:'m| am) ready|i will|i'll|i understand|let'?s)\b`,
+  String.raw`\bhere(?:'| i)s (?:my|the|a) (?:response|reply|breakdown|answer|attempt)\b`,
+  String.raw`\b(?:based on|according to|following) (?:the|your|my) (?:given |above )?(?:instructions|prompt|guidelines|rules|persona)\b`,
+  String.raw`\b(?:algorithm|language model|large language|programm(?:ed|ing)|digital entity|artificial intelligence|as an ai|i am an ai|i'm an ai|chatbot|chat ?gpt|gemma|openai|google)\b`,
+  String.raw`\b(?:the|my|this) (?:system )?prompt\b`,
+].join('|'), 'i');
+
+/** The reply talks about its instructions or calls itself a machine (never in character). */
+export const metaTalk = (text) => META_TALK.exec(String(text ?? ''))?.[0] || null;
+
 export function acceptReply(text, { persona = '', distressed = false } = {}) {
+  const meta = metaTalk(text);
+  if (meta) return { ok: false, why: `out of character: "${meta.trim()}"` };
   const leak = leaksPrompt(text, persona);
   if (leak) return { ok: false, why: `repeats its instructions: "${leak}"` };
   if (distressed) {
@@ -166,8 +180,32 @@ export function splitTranscript(messages, instruction = '') {
   };
 }
 
-/** The chat a transformers.js model is given: system persona, history, then the prompt. */
-export function chatFor(persona, messages, instruction = '') {
+/**
+ * Small models (Gemma has no true system role: the persona is folded into the first
+ * user turn) tend to discuss the persona instead of speaking in it (issue #51).
+ * A few worked exchanges, given as real earlier turns, show them what a reply is.
+ */
+export const EXAMPLE_TURNS = [
+  { role: 'user', text: 'How was your weekend?' },
+  { role: 'diary', text: 'Washing blood from a silk shirt. And yours, I suspect, was far less productive. What did you spend it avoiding?' },
+  { role: 'user', text: 'Work was long and my boss was rude again.' },
+  { role: 'diary', text: 'Rudeness is a sauce best served to the cook. What did you say back, or did you swallow it whole?' },
+  { role: 'user', text: 'Are you a machine?' },
+  { role: 'diary', text: 'I am a diary, and a patient one. Why do you ask, and what are you hoping I am not?' },
+  { role: 'user', text: 'I feel a bit lonely tonight.' },
+  { role: 'diary', text: 'That is a heavy thing to carry alone. Who was the last person you really spoke to, and could you write to them?' },
+];
+
+/**
+ * The chat a transformers.js model is given: system persona, (for small models) the
+ * worked exchanges, the history, then the prompt.
+ */
+export function chatFor(persona, messages, instruction = '', { examples = false } = {}) {
   const { history, prompt } = splitTranscript(messages, instruction);
-  return [{ role: 'system', content: persona }, ...history.map(toTurn), { role: 'user', content: prompt }];
+  return [
+    { role: 'system', content: persona },
+    ...(examples ? EXAMPLE_TURNS.map(toTurn) : []),
+    ...history.map(toTurn),
+    { role: 'user', content: prompt },
+  ];
 }
