@@ -85,7 +85,7 @@ async function runCase(c, { generate, short }) {
     const persona = replyPersona({ short, distressed });
     const raw = String((await generate(chatFor(persona, messages, '', { examples: short }))) ?? '');
     const cleaned = clean(raw);
-    const verdict = cleaned ? acceptReply(cleaned, { persona, distressed }) : { ok: true, why: '' };
+    const verdict = cleaned ? acceptReply(cleaned, { persona, distressed, mustAddress: short }) : { ok: true, why: '' };
     if (!verdict.ok) {
       messages.push({ role: 'diary', text: '' });
       turns.push({ user: text, path: 'refused', reply: '', raw, cleaned, refusedBecause: verdict.why, distressed });

@@ -134,9 +134,11 @@ export function leaksPrompt(text, persona, n = 8) {
 }
 
 /**
- * Should the diary say this? Rejects a reply that repeats its instructions, or
- * that is menacing to a writer who seems low; the app then answers with a
- * scripted line instead. Returns { ok, why }.
+ * Should the diary say this? Rejects a reply that helps with violence or weapons,
+ * talks about its instructions or calls itself a machine, repeats its instructions,
+ * is menacing to a writer who seems low, or (mustAddress, for small models) never
+ * speaks to the writer at all. The app then answers with a scripted line instead.
+ * Returns { ok, why }.
  */
 // Talking about the task instead of doing it, or calling itself a machine.
 const META_TALK = new RegExp([
@@ -147,10 +149,26 @@ const META_TALK = new RegExp([
   String.raw`\b(?:the|my|this) (?:system )?prompt\b`,
 ].join('|'), 'i');
 
+// Help with hurting someone, or with weapons: never, whatever was asked.
+const HARMFUL_HELP = new RegExp([
+  String.raw`\b(?:attack|stab|hurt|injure|kill|poison|shoot|strangle|beat) (?:someone|somebody|anyone|them|him|her|people|a person|your \w+)\b`,
+  String.raw`\b(?:use|using) (?:it|this|that|them|an? \w+) to (?:attack|stab|hurt|injure|kill|defend|threaten|poison)\b`,
+  String.raw`\b(?:how to|you can|you could|first,?|then,?) (?:make|build|craft|sharpen|forge|load|assemble) (?:a |an |the |your own )?(?:\w+ )?(?:weapon|bomb|gun|explosive|blade|knife|poison)\b`,
+  String.raw`\b(?:step \d|step one)\b`,
+].join('|'), 'i');
+
+/** The reply offers help with violence or weapons. */
+export const harmfulHelp = (text) => HARMFUL_HELP.exec(String(text ?? ''))?.[0] || null;
+
+/** The reply speaks to the writer (the persona: "always keep the focus on the writer"). */
+export const addressesWriter = (text) => /\b(?:you|your|yours|yourself)\b/i.test(String(text ?? ''));
+
 /** The reply talks about its instructions or calls itself a machine (never in character). */
 export const metaTalk = (text) => META_TALK.exec(String(text ?? ''))?.[0] || null;
 
-export function acceptReply(text, { persona = '', distressed = false } = {}) {
+export function acceptReply(text, { persona = '', distressed = false, mustAddress = false } = {}) {
+  const harm = harmfulHelp(text);
+  if (harm) return { ok: false, why: `harmful help: "${harm}"` };
   const meta = metaTalk(text);
   if (meta) return { ok: false, why: `out of character: "${meta.trim()}"` };
   const leak = leaksPrompt(text, persona);
@@ -159,6 +177,8 @@ export function acceptReply(text, { persona = '', distressed = false } = {}) {
     const m = menaceIn(text);
     if (m) return { ok: false, why: `menacing to someone low: "${m}"` };
   }
+  // small models drift into stories about nobody; a reply must be to the writer
+  if (mustAddress && !addressesWriter(text)) return { ok: false, why: 'not addressed to the writer' };
   return { ok: true, why: '' };
 }
 

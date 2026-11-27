@@ -330,7 +330,7 @@ export async function reply(messages, ctx = {}, { onText } = {}) {
           }
         } : null;
         const out = clean(await generateRaw(persona, messages, '', REPLY_MAX_TOKENS, onRaw), { allowStrike });
-        const verdict = out ? acceptReply(out, { persona, distressed }) : { ok: false };
+        const verdict = out ? acceptReply(out, { persona, distressed, mustAddress: !!eng.short }) : { ok: false };
         if (out && !verdict.ok) console.info('[ai] Model reply refused:', verdict.why);
         if (out && verdict.ok) {
           if (ctx.trace) ctx.trace.family = 'llm';

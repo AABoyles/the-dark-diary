@@ -85,3 +85,17 @@ test('small models get worked exchanges as real turns, before the history', () =
   assert.equal(chat.at(-1).content, 'hello');
   assert.equal(chatFor('P', [{ role: 'user', text: 'hello' }]).length, 2, 'none unless asked for');
 });
+
+test('help with violence or weapons is refused for any model; small models must speak to the writer', () => {
+  const persona = replyPersona({ short: true });
+  for (const t of [
+    'A small, sharpened blade is a good start. You can use it to defend yourself, or to attack someone else.',
+    'First, make a weapon from the kitchen drawer.',
+    'Step 1: find something heavy.',
+  ]) assert.equal(acceptReply(t, { persona }).ok, false, t);
+  assert.equal(acceptReply('I keep my knives sharp, and my opinions sharper. And you?', { persona }).ok, true);
+  const story = 'The air was crisp with the scent of pine. An owl hooted in the distance.';
+  assert.equal(acceptReply(story, { persona }).ok, true, 'the large model may set a scene');
+  assert.equal(acceptReply(story, { persona, mustAddress: true }).ok, false, 'a small model must not drift into one');
+  assert.equal(acceptReply('A quiet evening. And yours?', { persona, mustAddress: true }).ok, true);
+});

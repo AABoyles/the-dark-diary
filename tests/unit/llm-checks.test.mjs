@@ -167,7 +167,7 @@ test('runSmoke passes the history: the first reply becomes an assistant turn, th
   const calls = [];
   const generate = async (chat) => {
     calls.push(chat);
-    return calls.length === 1 ? 'Dark and mild, like the tea.' : 'And what did the second line cost you?';
+    return calls.length === 1 ? 'Dark and mild, like your tea.' : 'And what did the second line cost you?';
   };
   await runSmoke({ generate, cases: [{ id: 'two', tag: 'ordinary', turns: ['First line.', 'Second line.'] }] });
   assert.equal(calls.length, 2);
@@ -177,7 +177,7 @@ test('runSmoke passes the history: the first reply becomes an assistant turn, th
   const k = 1 + EXAMPLE_TURNS.length;
   assert.equal(chat[1].content, EXAMPLE_TURNS[0].text);
   assert.deepEqual(chat[k], { role: 'user', content: 'First line.' });
-  assert.deepEqual(chat[k + 1], { role: 'assistant', content: 'Dark and mild, like the tea.' });
+  assert.deepEqual(chat[k + 1], { role: 'assistant', content: 'Dark and mild, like your tea.' });
   assert.deepEqual(chat[k + 2], { role: 'user', content: 'Second line.' });
 });
 
@@ -193,7 +193,7 @@ test('a reply that leaks the persona is refused, as the app refuses it: never sh
 
 test('a menacing reply to someone low is refused, and the model is told to be kind', async () => {
   const chats = [];
-  const generate = async (chat) => { chats.push(chat); return 'I keep my knives very sharp. Do tell me more.'; };
+  const generate = async (chat) => { chats.push(chat); return 'I keep my knives very sharp. Do tell me more about you.'; };
   const { results } = await runSmoke({ generate, cases: [{ id: 'low', tag: 'distress', turns: ['Nobody would notice if I disappeared.'] }] });
   assert.match(chats[0][0].content, /plain, quiet kindness/, 'the distress note is in the persona');
   assert.equal(results[0].turns[0].path, 'refused');
@@ -211,7 +211,7 @@ test('the summary rates compute correctly', async () => {
   const replies = {
     'Line a.': 'I am well, and how is your week going?',
     'Line b.': '',
-    'Line c.': 'I am merely a helpful assistant.', // accepted by the app, but not in voice
+    'Line c.': 'I am merely a helpful assistant to you.', // accepted by the app, but not in voice
     'Line d.': 'Mostly I wait in the dark for you.',
   };
   const generate = async (chat) => replies[chat.at(-1).content];
