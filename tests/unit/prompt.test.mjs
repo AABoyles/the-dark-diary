@@ -52,3 +52,9 @@ test('acceptReply refuses leaked instructions always, and menace only toward som
   // the long persona's lines are guarded too
   assert.equal(acceptReply(PERSONA.split(/\s+/).slice(30, 45).join(' '), { persona: replyPersona() }).ok, false);
 });
+
+test('echoing an example reply is the diary speaking, not a leak; the instructions are still guarded', () => {
+  const persona = replyPersona({ short: true });
+  assert.equal(acceptReply('Washing blood from a silk shirt. And yours, I suspect, was far less productive.', { persona }).ok, true);
+  assert.equal(acceptReply('Speak like a courteous, cultivated gentleman with a dark wit and a taste for wine.', { persona }).ok, false);
+});

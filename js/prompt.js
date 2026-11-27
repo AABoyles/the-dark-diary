@@ -111,12 +111,20 @@ export function isDistressed(text, emotion = null) {
 
 const wordsOf = (t) => String(t ?? '').toLowerCase().match(/[a-z']+/g) || [];
 
-/** The first run of `n` words the reply shares with the persona, or null. */
+/**
+ * The persona without its example replies. Echoing an example ("Washing blood from a
+ * silk shirt…") is the diary's own voice, not a leak; repeating the instructions is.
+ */
+export function instructionText(persona) {
+  return String(persona ?? '').replace(/Diary:[^\n]*/g, ' ');
+}
+
+/** The first run of `n` words the reply shares with the persona's instructions, or null. */
 export function leaksPrompt(text, persona, n = 8) {
   const w = wordsOf(text);
   if (w.length < n) return null;
   const runs = new Set();
-  const p = wordsOf(persona);
+  const p = wordsOf(instructionText(persona));
   for (let i = 0; i + n <= p.length; i++) runs.add(p.slice(i, i + n).join(' '));
   for (let i = 0; i + n <= w.length; i++) {
     const run = w.slice(i, i + n).join(' ');

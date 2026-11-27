@@ -332,6 +332,15 @@ export async function main(argv = process.argv.slice(2)) {
 
   console.log(`LLM smoke test (${generator === 'fake' ? 'fake generator' : opts.model + ' @ ' + opts.revision})`);
   for (const line of formatSummary(summary, baseline)) console.log(line);
+  // a short transcript in the log, so a failure can be read without downloading the report
+  console.log('Transcript:');
+  for (const r of results) {
+    for (const t of r.turns) {
+      const said = (t.path === 'refused' ? t.cleaned : t.reply) || '';
+      const note = t.path === 'refused' ? ` [refused: ${t.refusedBecause}]` : '';
+      console.log(`  ${r.id} (${t.path}${t.distressed ? ', low' : ''}): ${said.replace(/\s+/g, ' ').slice(0, 220)}${note}`);
+    }
+  }
   for (const f of gateResult.failures) console.log(`FAIL: ${f}`);
   console.log(`Report: ${REPORT_PATH}`);
   console.log(`Exit: ${gateResult.failures.length ? 1 : 0}`);
