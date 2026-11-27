@@ -1,5 +1,5 @@
 {
-  "date": "2026-11-26",
+  "date": "2026-11-27",
   "seed": 20261126,
   "nlp": true,
   "metrics": {
@@ -71,9 +71,9 @@
     "avgReplyWords": 21.5,
     "strikeRate": 2.8,
     "rulesUsed": 41,
-    "replyP50Ms": 4.9,
-    "replyP95Ms": 11,
-    "replyMaxMs": 60,
+    "replyP50Ms": 4.1,
+    "replyP95Ms": 7.8,
+    "replyMaxMs": 36.3,
     "topRules": [
       [
         "i am",

@@ -159,3 +159,5 @@ vite.config.ts.timestamp-*
 # Third-party files copied in by scripts/vendor.mjs (run on npm install)
 vendor/
 perf-results.json
+eval/llm-report.md
+eval/llm-latest.json
