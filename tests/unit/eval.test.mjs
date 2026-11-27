@@ -15,7 +15,9 @@ test('the fallback engine holds every hard floor on the corpus', async () => {
 test('the same seed gives the same metrics', async () => {
   const a = await evaluate({ compromise, seed: 7 });
   const b = await evaluate({ compromise, seed: 7 });
-  assert.deepEqual(a.metrics, b.metrics);
+  // timings vary run to run; everything else must match exactly
+  const strip = ({ replyP50Ms, replyP95Ms, replyMaxMs, ...rest }) => rest;
+  assert.deepEqual(strip(a.metrics), strip(b.metrics));
 });
 
 test('the regex fallbacks (no compromise) hold the floors too', async () => {

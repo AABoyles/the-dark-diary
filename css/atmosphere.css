@@ -11,10 +11,11 @@
 
 
 /* -------------------------------------------------------------------------
-   01. Candlelight vignette
-   Multiply blend: the centre is white (no change), so the page keeps its
-   contrast. The warm pool sits upper-left; the darkening sits at the edges.
-   Flicker sets --candle-intensity, --candle-x and --candle-y from candle.js.
+   01. Candlelight vignette (issues #23, #44)
+   Pre-blended layers, no mix-blend-mode: a static edge vignette, a warm glow
+   and a faint dimming layer. Only opacity and transform animate, on composited
+   layers, so the flicker never repaints the page. Two loops of different
+   lengths keep it from looking periodic.
    ------------------------------------------------------------------------- */
 
 #candle {
@@ -22,29 +23,79 @@
   inset: 0;
   z-index: 10;
   pointer-events: none;
-  mix-blend-mode: multiply;
-  background-color: #fff;
-  background-image:
-    radial-gradient(ellipse 55% 50% at 30% 22%, #fff4dc 0%, #ffe2ac 38%, rgba(255, 226, 172, 0) 100%),
-    radial-gradient(ellipse 75% 75% at 50% 50%, rgba(44, 22, 8, 0) 55%, rgba(44, 22, 8, 0.22) 85%, rgba(30, 15, 5, 0.42) 100%);
-  background-size: 120% 120%, 100% 100%;
-  background-repeat: no-repeat;
-  background-position:
-    calc(-10px + var(--candle-x, 0px)) calc(-10px + var(--candle-y, 0px)),
-    0 0;
-  opacity: calc(var(--candle-intensity, 1) * var(--candle-strength, 0.9));
-  transition:
-    opacity 180ms ease-out,
-    background-position 220ms ease-out;
+  overflow: hidden;
+  contain: strict;
+}
+
+#candle > div {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* darkened edges: still, painted once */
+#candle .candle-vignette {
+  inset: 0;
+  background: radial-gradient(ellipse 75% 75% at 50% 50%,
+    rgba(30, 15, 5, 0) 55%, rgba(30, 15, 5, 0.18) 85%, rgba(20, 10, 3, 0.36) 100%);
+}
+
+/* the warm pool of light, upper left; drifts and breathes */
+#candle .candle-glow {
+  inset: -4%;
+  background: radial-gradient(ellipse 52% 48% at 32% 24%,
+    rgba(255, 196, 120, 0.13) 0%, rgba(255, 186, 104, 0.07) 40%, rgba(255, 186, 104, 0) 100%);
+  will-change: opacity, transform;
+  animation: candleGlow 7.3s linear infinite;
+}
+
+/* the flame gutters: the edges dip a little darker now and then */
+#candle .candle-shadow {
+  inset: 0;
+  background: radial-gradient(ellipse 70% 70% at 50% 50%,
+    rgba(20, 10, 3, 0) 60%, rgba(20, 10, 3, 0.16) 100%);
+  opacity: 0;
+  will-change: opacity;
+  animation: candleShadow 5.1s linear infinite;
+}
+
+@keyframes candleGlow {
+  0%   { opacity: 0.92; transform: translate(0, 0) scale(1); }
+  9%   { opacity: 0.80; transform: translate(-3px, 2px) scale(1.01); }
+  14%  { opacity: 0.97; transform: translate(2px, -1px) scale(0.995); }
+  27%  { opacity: 0.86; transform: translate(4px, 2px) scale(1.012); }
+  33%  { opacity: 1;    transform: translate(1px, -2px) scale(1); }
+  48%  { opacity: 0.83; transform: translate(-4px, -1px) scale(1.008); }
+  55%  { opacity: 0.95; transform: translate(-1px, 3px) scale(0.997); }
+  71%  { opacity: 0.88; transform: translate(3px, 1px) scale(1.01); }
+  79%  { opacity: 0.99; transform: translate(0, -3px) scale(1.004); }
+  91%  { opacity: 0.84; transform: translate(-2px, 1px) scale(1.006); }
+  100% { opacity: 0.92; transform: translate(0, 0) scale(1); }
+}
+
+@keyframes candleShadow {
+  0%, 100% { opacity: 0; }
+  12% { opacity: 0.55; }
+  17% { opacity: 0.1; }
+  41% { opacity: 0.35; }
+  46% { opacity: 0; }
+  68% { opacity: 0.7; }
+  73% { opacity: 0.2; }
+  88% { opacity: 0.45; }
 }
 
 
 /* -------------------------------------------------------------------------
-   02. Thinking state: a touch brighter (less edge darkening), set by setThinking(true)
+   02. Thinking state: the flame leans in (brighter, quicker), set by setThinking(true)
    ------------------------------------------------------------------------- */
 
-#candle.thinking {
-  --candle-strength: 0.7;
+#candle.thinking .candle-glow { animation-duration: 3.1s; }
+#candle.thinking .candle-shadow { animation-duration: 2.3s; }
+#candle.thinking .candle-vignette { opacity: 0.8; }
+
+/* asleep while the tab is hidden or the book is closed */
+#candle.paused > div,
+body:has(#book.closed) #candle > div {
+  animation-play-state: paused;
 }
 
 
@@ -57,14 +108,15 @@
 
 /* -------------------------------------------------------------------------
    04. Reduced motion and print
-   candle.js also renders a static vignette under reduced motion.
+   Under reduced motion the candle is a still, warm vignette.
    ------------------------------------------------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
-  #candle,
-  #candle.thinking {
-    transition: none;
+  #candle > div {
+    animation: none !important;
   }
+  #candle .candle-glow { opacity: 0.92; }
+  #candle .candle-shadow { opacity: 0; }
 }
 
 @media print {

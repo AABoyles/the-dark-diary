@@ -1,0 +1,50 @@
+/* Self-hosted faces. The .woff2 files are copied into vendor/fonts/ by scripts/vendor.mjs
+   (pinned in vendor.lock.json), so the page makes no requests to a font CDN. */
+
+@font-face {
+  font-family: 'IM Fell English';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../vendor/fonts/im-fell-english-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'IM Fell English';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../vendor/fonts/im-fell-english-400-italic.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Homemade Apple';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../vendor/fonts/homemade-apple-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Pinyon Script';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../vendor/fonts/pinyon-script-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../vendor/fonts/cormorant-garamond-600.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../vendor/fonts/cormorant-garamond-600-italic.woff2') format('woff2');
+}

@@ -12,10 +12,15 @@
 // word, then a line drawn through it, a short pause, and the gentler word.
 // When finished, the paragraph collapses to its final markup (renderInk) with class "done".
 //
-// Hand-written look (issue #22): every letter carries a small deterministic tilt,
+// Hand-written look (issue #22): every word carries a small deterministic tilt,
 // bob and weight (handFor), chosen from a seed so that streaming and the final
-// render agree. Letters of a word sit in a nowrap <span class="w"> so words never
+// render agree. Words are nowrap inline-block <span class="w">s, so they never
 // break across lines. About one message in five gets an ink blot (blotFor).
+//
+// DOM weight (issue #45): only text being written is one <span class="ch"> per
+// letter (each fades in). A finished message is one span per word holding plain
+// text, which is about a fifth of the nodes; the words sit exactly where they
+// were while being written, so nothing moves when the message settles.
 
 import { parseStrikes } from './strike.js';
 
@@ -111,10 +116,22 @@ function createHand(seed) {
   return { seed, index: 0, pos: 0, word: null };
 }
 
+// A new word span, carrying the hand for the word that starts at hand.index.
+function startWord(hand, parent) {
+  const { rot, dy, weight } = handFor(hand.seed, hand.index, { pos: 0 });
+  const w = document.createElement('span');
+  w.className = 'w';
+  w.style.setProperty('--rot', `${rot}deg`);
+  w.style.setProperty('--dy', `${dy}em`);
+  w.style.setProperty('--w', String(weight));
+  parent.appendChild(w);
+  return w;
+}
+
 /**
- * Appends one visible character to `parent`. Spaces are plain text nodes so the
- * line can wrap; letters go into the current word's nowrap span. Returns the
- * <span class="ch"> for a letter, or null for a space.
+ * Appends one visible character to `parent` while writing. Spaces are plain text
+ * nodes so the line can wrap; letters go into the current word's span. Returns
+ * the <span class="ch"> for a letter (it fades in), or null for a space.
  */
 function placeChar(hand, parent, ch) {
   if (ch === ' ') {
@@ -124,17 +141,9 @@ function placeChar(hand, parent, ch) {
     hand.index += 1;
     return null;
   }
-  if (!hand.word || hand.word.parentNode !== parent) {
-    hand.word = document.createElement('span');
-    hand.word.className = 'w';
-    parent.appendChild(hand.word);
-  }
-  const { rot, dy, weight } = handFor(hand.seed, hand.index, { pos: hand.pos });
+  if (!hand.word || hand.word.parentNode !== parent) hand.word = startWord(hand, parent);
   const s = document.createElement('span');
   s.className = 'ch';
-  s.style.setProperty('--rot', `${rot}deg`);
-  s.style.setProperty('--dy', `${dy}em`);
-  s.style.setProperty('--w', String(weight));
   s.textContent = ch;
   hand.word.appendChild(s);
   hand.pos += 1;
@@ -175,9 +184,22 @@ export function renderInk(p, text, { seed, blotIn = false } = {}) {
       p.appendChild(s);
       parent = s;
     }
-    for (const ch of seg.text) placeChar(hand, parent, ch);
+    // settled text: one span per word, plain text inside (no per-letter spans)
+    for (const ch of seg.text) {
+      if (ch === ' ') {
+        parent.appendChild(document.createTextNode(' '));
+        hand.word = null;
+        hand.pos = 0;
+      } else {
+        if (!hand.word || hand.word.parentNode !== parent) hand.word = startWord(hand, parent);
+        hand.word.appendChild(document.createTextNode(ch));
+        hand.pos += 1;
+      }
+      hand.index += 1;
+    }
     plain += seg.text;
   }
+  p.normalize(); // one text node per word
   setReadableText(p, plain);
   appendBlot(p, hand.seed, blotIn);
 }
@@ -196,6 +218,12 @@ function setReadableText(p, plain) {
   }
   sr.textContent = plain;
 }
+
+const smallOrSlow = () => {
+  try {
+    return matchMedia('(max-width: 759.98px)').matches || (navigator.hardwareConcurrency || 8) <= 4;
+  } catch { return false; }
+};
 
 const prefersReducedMotion = () => {
   try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
@@ -216,6 +244,7 @@ export class InkWriter {
     this.target = p;        // where characters go: the paragraph, or an open <s>
     this.done = new Promise((resolve) => { this._resolve = resolve; });
     this.reduce = prefersReducedMotion();
+    this.batch = smallOrSlow() ? 2 : 1;
     p.textContent = '';
     p.setAttribute('aria-hidden', 'true'); // the readable copy is set when the text settles
     p.classList.remove('done');
@@ -300,9 +329,18 @@ export class InkWriter {
         return;
       }
     }
-    const ch = this.queue.shift();
-    const s = placeChar(this.hand, this.target, ch);
-    if (s) s.style.setProperty('--i', 0); // each character animates in as it is placed
+    // small screens and slow devices place two letters per tick (half the timers, same pace)
+    this._place(this.queue.shift());
+    let delay = this.charDelay;
+    if (this.batch > 1 && this.queue.length && this.queue[0] !== '~') {
+      this._place(this.queue.shift());
+      delay *= 2;
+    }
+    this.timer = setTimeout(() => { this.timer = null; this._tick(); }, delay);
+  }
+
+  _place(ch) {
+    placeChar(this.hand, this.target, ch);
     this.written += ch;
     if (this.onChar && ch !== ' ') {
       try { this.onChar(ch); } catch { /* ignore */ }
@@ -310,7 +348,6 @@ export class InkWriter {
     if (this.onProgress && (ch === ' ' || this.written.length % 12 === 0)) {
       try { this.onProgress(); } catch { /* ignore */ }
     }
-    this.timer = setTimeout(() => { this.timer = null; this._tick(); }, this.charDelay);
   }
 
   _settle(delay = 750) {

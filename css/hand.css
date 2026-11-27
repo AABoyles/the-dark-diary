@@ -1,22 +1,24 @@
-/* Hand-written look for the diary's reply (issue #22). Pairs with js/ink.js:
-   every letter carries --rot, --dy and --w, and about one message in five has a blot. */
+/* Hand-written look for the diary's reply (issues #22, #45). Pairs with js/ink.js:
+   every word carries --rot, --dy and --w, and about one message in five has a blot. */
 
 .entry.diary .ink {
   position: relative; /* the blot is placed against the paragraph */
 }
 
-/* Each letter tilts and bobs a little. Inline-block so transforms apply; the
-   words keep wrapping because each word is a nowrap span (.w). Weight is carried
-   in the colour, not opacity: style.css forces opacity to 1 on settled letters. */
-.entry.diary .ink .ch {
+/* Each word tilts and bobs a little (issue #45: per word, so a settled message
+   is one span per word rather than one per letter). Inline-block so transforms
+   apply and words never break across lines. Weight is carried in the colour. */
+.entry.diary .ink .w {
   display: inline-block;
+  white-space: nowrap;
   transform: translateY(var(--dy, 0em)) rotate(var(--rot, 0deg));
   color: var(--ink-diary);
   color: color-mix(in srgb, var(--ink-diary) calc(var(--w, 1) * 100%), transparent);
 }
 
-.entry.diary .ink .w {
-  white-space: nowrap;
+/* letters exist only while a message is being written; they just fade in */
+.entry.diary .ink .ch {
+  display: inline;
 }
 
 /* Ink blot: a small dark irregular spot near the end of the message, with two

@@ -18,7 +18,6 @@
  * Messages are arrays of { role: 'user' | 'diary', text: string }.
  */
 
-import { scriptedReply, scriptedTitle } from './fallback.js';
 import { createLlm } from './llm-client.js';
 import { matchIntent } from './embed.js';
 import { memoryNote } from './memory.js';
@@ -27,9 +26,17 @@ import { isCrisis, crisisReply } from './crisis.js';
 import { maybeStrike, stripStrikes, hasStrike } from './strike.js';
 import { timeNote } from './timesense.js';
 import { familiarityNote } from './familiarity.js';
-import { analyze } from './understand.js';
-import { emotionByMeaning } from './emotion.js';
-import { semanticCandidates } from './retrieve.js';
+
+// The no-LLM reply engine (line bank, ELIZA rules, grammar, dialogue: ~330 KB) is
+// loaded on demand rather than before the book opens (issue #42); the app calls
+// loadReplyEngine() when the book opens so the first reply doesn't wait.
+let replyKit = null;
+export function loadReplyEngine() {
+  replyKit ??= Promise.all([
+    import('./fallback.js'), import('./understand.js'), import('./emotion.js'), import('./retrieve.js'),
+  ]).then(([f, u, e, r]) => ({ ...f, ...u, ...e, ...r }));
+  return replyKit;
+}
 
 // Which model to load (and whether to load one at all) is decided by the app
 // with js/mind.js and passed to initEngine(); see GitHub issues #6 and #25.
@@ -378,6 +385,7 @@ const prefixed = (note) => (note ? `\n\n${note}` : '');
  * matchIntent resolves to null at once when the embedder isn't ready.
  */
 async function scripted(messages, ctx) {
+  const { scriptedReply, analyze, emotionByMeaning, semanticCandidates } = await loadReplyEngine();
   const last = [...messages].reverse().find((m) => m.role === 'user');
   const text = last?.text || '';
   let rewrite = null;
@@ -401,14 +409,15 @@ async function scripted(messages, ctx) {
  * With { previous }, a revised, sharper title that differs from it (issue #17).
  */
 export function makeTitle(messages, { previous = null } = {}) {
-  const scriptedNew = () => {
+  const scriptedNew = async () => {
+    const { scriptedTitle } = await loadReplyEngine();
     for (let i = 0; i < 6; i++) {
       const t = scriptedTitle(messages);
       if (t !== previous) return t;
     }
     return scriptedTitle(messages);
   };
-  if (!engine) return Promise.resolve(scriptedNew());
+  if (!engine) return scriptedNew();
   return enqueue(async () => {
     const eng = await ensureEngine();
     if (eng.backend !== 'scripted') {

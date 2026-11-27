@@ -59,9 +59,20 @@ function lastUser(messages) {
   return '';
 }
 
+// Only the last part of a very long message is read (issue #46): nothing the
+// diary says echoes more than a few words, and this bounds every module's work.
+const MAX_PROCESSED_CHARS = 1200;
+function trimLong(text) {
+  const t = String(text ?? '');
+  if (t.length <= MAX_PROCESSED_CHARS) return t;
+  return t.slice(-MAX_PROCESSED_CHARS).replace(/^\S*\s+/, '');
+}
+
 export function respond(messages = [], ctx = {}) {
   const trace = ctx.trace && typeof ctx.trace === 'object' ? ctx.trace : {};
-  const list = Array.isArray(messages) ? messages.filter((m) => m && typeof m === 'object') : [];
+  const list = (Array.isArray(messages) ? messages.filter((m) => m && typeof m === 'object') : [])
+    .map((m, i, all) => (i === all.length - 1 && m.role === 'user' && String(m.text || '').length > MAX_PROCESSED_CHARS
+      ? { ...m, text: trimLong(m.text) } : m));
   const latest = lastUser(list);
   let analysis = ctx.analysis;
   try { analysis = analysis || analyze(latest); } catch { analysis = null; }

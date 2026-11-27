@@ -11,6 +11,33 @@ const MEMORIES = 'memories';
 
 let dbPromise = null;
 
+// In-memory copies of both stores (issue #46): read once, then kept up to date
+// by every write here, so a message never rescans IndexedDB. Another tab that
+// writes tells this one to drop its copies.
+let sessionCache = null;   // Map id -> session
+let memoryCache = null;    // Map id -> memory
+let channel = null;
+try {
+  channel = new BroadcastChannel('dark-diary-db');
+  channel.onmessage = () => { sessionCache = null; memoryCache = null; };
+} catch { /* no BroadcastChannel (tests, old browsers): single-tab assumption */ }
+const announce = () => { try { channel?.postMessage('changed'); } catch { /* ignore */ } };
+
+async function sessionsMap() {
+  if (!sessionCache) {
+    const all = await run(STORE, 'readonly', (store) => store.getAll());
+    sessionCache = new Map((all || []).map((s) => [s.id, s]));
+  }
+  return sessionCache;
+}
+async function memoriesMap() {
+  if (!memoryCache) {
+    const all = await run(MEMORIES, 'readonly', (store) => store.getAll());
+    memoryCache = new Map((all || []).map((m) => [m.id, m]));
+  }
+  return memoryCache;
+}
+
 /**
  * Open (or reuse) the database connection. The promise is cached so that
  * every call shares one connection. If the open fails or is blocked, the
@@ -112,8 +139,7 @@ async function run(storeName, mode, makeRequest) {
 
 /** All sessions, newest first by createdAt. */
 export async function listSessions() {
-  const sessions = await run(STORE, 'readonly', (store) => store.getAll());
-  return (sessions || []).sort((a, b) => b.createdAt - a.createdAt);
+  return [...(await sessionsMap()).values()].sort((a, b) => b.createdAt - a.createdAt);
 }
 
 /** Create and persist an empty session with a null title. */
@@ -127,25 +153,31 @@ export async function createSession() {
     messages: [],
   };
   await run(STORE, 'readwrite', (store) => store.put(session));
+  (await sessionsMap()).set(session.id, session);
+  announce();
   return session;
 }
 
 /** A session by id, or undefined if it does not exist. */
 export async function getSession(id) {
-  return run(STORE, 'readonly', (store) => store.get(id));
+  return (await sessionsMap()).get(id);
 }
 
 /** Persist a session, stamping updatedAt with the current time. */
 export async function saveSession(session) {
   session.updatedAt = Date.now();
   await run(STORE, 'readwrite', (store) => store.put(session));
+  (await sessionsMap()).set(session.id, session);
+  announce();
   return session;
 }
 
 /** Remove a session by id. */
 export async function deleteSession(id) {
   await run(STORE, 'readwrite', (store) => store.delete(id));
-  await deleteMemoriesForSession(id); // burning an entry burns what the diary learned from it
+  (await sessionsMap()).delete(id);
+  await deleteMemoriesForSession(id);
+  announce(); // burning an entry burns what the diary learned from it
 }
 
 // ---------- Memories (cross-session) ----------
@@ -153,18 +185,21 @@ export async function deleteSession(id) {
 /** Persist one memory record. */
 export async function putMemory(memory) {
   await run(MEMORIES, 'readwrite', (store) => store.put(memory));
+  (await memoriesMap()).set(memory.id, memory);
+  announce();
   return memory;
 }
 
 /** All memories, newest first. */
 export async function listMemories() {
-  const all = await run(MEMORIES, 'readonly', (store) => store.getAll());
-  return (all || []).sort((a, b) => b.ts - a.ts);
+  return [...(await memoriesMap()).values()].sort((a, b) => b.ts - a.ts);
 }
 
 /** Remove one memory by id. */
 export async function deleteMemory(id) {
   await run(MEMORIES, 'readwrite', (store) => store.delete(id));
+  (await memoriesMap()).delete(id);
+  announce();
 }
 
 /** Remove every memory learned in one session. */
@@ -180,7 +215,10 @@ export async function deleteMemoriesForSession(sessionId) {
       tx.objectStore(MEMORIES).delete(cursor.primaryKey);
       cursor.continue();
     };
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => {
+      if (memoryCache) for (const [k, m] of memoryCache) if (m.sessionId === sessionId) memoryCache.delete(k);
+      resolve();
+    };
     tx.onerror = tx.onabort = () => reject(tx.error || new Error('Could not delete memories.'));
   });
 }

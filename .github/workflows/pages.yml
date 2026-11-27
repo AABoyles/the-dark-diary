@@ -20,11 +20,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Runs the postinstall vendoring step (scripts/vendor.mjs), which fills ./vendor/.
+      - name: Install dependencies and vendor libraries
+        run: npm ci
+
       - name: Stage site
         run: |
           mkdir _site
           cp index.html manifest.webmanifest sw.js _site/
-          cp -r css js icons _site/
+          cp -r css js icons vendor _site/
+          # Every deploy gets its own service worker and shell cache (see VERSION in sw.js).
+          sed -i "s/__BUILD__/${GITHUB_SHA::12}/" _site/sw.js
+          grep -q "const VERSION = '${GITHUB_SHA::12}'" _site/sw.js
           touch _site/.nojekyll
 
       - uses: actions/configure-pages@v5

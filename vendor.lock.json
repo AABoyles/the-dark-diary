@@ -1,0 +1,74 @@
+{
+  "$comment": "Pinned third-party browser files copied into vendor/ by scripts/vendor.mjs. Hashes are SHA-256 of each file. Upgrade deliberately, then run: npm run vendor -- --update-lock",
+  "packages": {
+    "@huggingface/transformers": "4.3.2",
+    "onnxruntime-web": "1.31.0-dev.20260914-8d85527a0",
+    "compromise": "14.20.0",
+    "@fontsource/homemade-apple": "5.3.0",
+    "@fontsource/pinyon-script": "5.3.0",
+    "@fontsource/cormorant-garamond": "5.3.0",
+    "@fontsource/im-fell-english": "5.3.0"
+  },
+  "files": [
+    {
+      "package": "@huggingface/transformers",
+      "from": "dist/transformers.min.js",
+      "to": "vendor/transformers/transformers.min.js",
+      "sha256": "8b5a3171f8876bab2b1820a7d65eb87628e3d30bb5ea85b9dd398e76eb34decb"
+    },
+    {
+      "package": "onnxruntime-web",
+      "from": "dist/ort-wasm-simd-threaded.asyncify.mjs",
+      "to": "vendor/onnxruntime/ort-wasm-simd-threaded.asyncify.mjs",
+      "sha256": "0966b6105cd936744498aa60df7a22cbd47af3374dbc64a9ab561c08a71e3611"
+    },
+    {
+      "package": "onnxruntime-web",
+      "from": "dist/ort-wasm-simd-threaded.asyncify.wasm",
+      "to": "vendor/onnxruntime/ort-wasm-simd-threaded.asyncify.wasm",
+      "sha256": "49871f5a4409519797e127440868a6d1923339d9185907f301a5b2a1d90af082"
+    },
+    {
+      "package": "compromise",
+      "from": "builds/three/compromise-three.mjs",
+      "to": "vendor/compromise/compromise-three.mjs",
+      "sha256": "01eb6bc66479168160b3560533507d5aaca1ee32941ced24fe642f145a5623ac"
+    },
+    {
+      "package": "@fontsource/homemade-apple",
+      "from": "files/homemade-apple-latin-400-normal.woff2",
+      "to": "vendor/fonts/homemade-apple-400.woff2",
+      "sha256": "bbaa96c741caa479d4647fc567f64e5ddc71eec58ee9849cb9e8a14bee65bc30"
+    },
+    {
+      "package": "@fontsource/pinyon-script",
+      "from": "files/pinyon-script-latin-400-normal.woff2",
+      "to": "vendor/fonts/pinyon-script-400.woff2",
+      "sha256": "3e1f69a201572cad4aabea7ccf720f093a7dbc005380b2a1b89e0b94476d3e42"
+    },
+    {
+      "package": "@fontsource/cormorant-garamond",
+      "from": "files/cormorant-garamond-latin-600-normal.woff2",
+      "to": "vendor/fonts/cormorant-garamond-600.woff2",
+      "sha256": "ae062b6d5ae308e7edf61b28b07b9984bbb6e961b1f34d9b2c2f4389c33f21ea"
+    },
+    {
+      "package": "@fontsource/cormorant-garamond",
+      "from": "files/cormorant-garamond-latin-600-italic.woff2",
+      "to": "vendor/fonts/cormorant-garamond-600-italic.woff2",
+      "sha256": "0b6719b25266b8f7f0b48e84eb8094db8d243c5b089a5fa48d350bc93f57127b"
+    },
+    {
+      "package": "@fontsource/im-fell-english",
+      "from": "files/im-fell-english-latin-400-normal.woff2",
+      "to": "vendor/fonts/im-fell-english-400.woff2",
+      "sha256": "248300df1647bec49155a5cada1d65f719ae633ef48564d1f19b135a8a5b7f5f"
+    },
+    {
+      "package": "@fontsource/im-fell-english",
+      "from": "files/im-fell-english-latin-400-italic.woff2",
+      "to": "vendor/fonts/im-fell-english-400-italic.woff2",
+      "sha256": "8fc678575e83868f82ce5aa6e023f056ea68d480e16dd108b3e14bc375c8fdea"
+    }
+  ]
+}

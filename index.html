@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="A leather-bound diary that answers back. Private, offline, and entirely in your browser.">
 <title>The Dark Diary</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Homemade+Apple&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=IM+Fell+English:ital@0;1&family=Pinyon+Script&display=swap" rel="stylesheet">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co; img-src 'self' data: blob:; font-src 'self'; style-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<link rel="preload" href="vendor/fonts/im-fell-english-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#2a0d0d">
 <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/fonts.css">
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/hand.css">
 <link rel="stylesheet" href="css/effects.css">
@@ -25,7 +25,7 @@
     <div id="cover" role="button" tabindex="0" aria-describedby="cover-hint">
       <div class="cover-emboss">
         <span class="cover-line">Property of</span>
-        <span class="cover-title">The Diary</span>
+        <span class="cover-title" data-text="The Diary">The Diary</span>
         <span class="cover-line">of nobody in particular</span>
       </div>
       <span id="cover-hint" class="cover-hint">Touch the cover to open it</span>
@@ -69,11 +69,14 @@
               <time id="session-date"></time>
             </header>
             <div id="entries" aria-live="polite"></div>
-            <form id="entry-form" autocomplete="off">
-              <textarea id="entry-input" rows="1" maxlength="2000" placeholder="Write something…" aria-label="Write in the diary"></textarea>
-            </form>
+            <!-- keeps the writing box's place in the column flow; the box itself is
+                 positioned over it from outside the columns (issue #45) -->
+            <div id="entry-slot" aria-hidden="true"></div>
           </div>
         </div>
+        <form id="entry-form" autocomplete="off">
+          <textarea id="entry-input" rows="1" maxlength="2000" placeholder="Write something…" aria-label="Write in the diary"></textarea>
+        </form>
         <button id="back-to-toc" type="button" aria-label="Back to contents">⟵ Contents</button>
         <nav id="spread-nav" aria-label="Turn pages">
           <button id="prev-spread" type="button" aria-label="Previous pages"><span aria-hidden="true">‹</span></button>

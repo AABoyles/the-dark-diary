@@ -268,6 +268,30 @@ body {
   margin: 0.35rem 0;
 }
 
+/* The title is painted in solid gold so the browser can register it as the
+   page's largest contentful paint (transparent background-clipped text never
+   counts; issue #42). The gradient foil is laid over it from data-text. */
+.cover-emboss > .cover-title {
+  position: relative;
+  color: var(--gold-mid);
+  background: none;
+}
+.cover-emboss > .cover-title::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  color: transparent;
+  background: linear-gradient(180deg,
+    var(--gold-hi) 0%,
+    var(--gold-mid) 45%,
+    var(--gold-lo) 52%,
+    var(--gold-mid) 70%,
+    var(--gold-hi) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  pointer-events: none;
+}
+
 /* Closed: cover sits flat; pages are not rendered */
 #book.closed #cover {
   visibility: visible;
@@ -642,10 +666,7 @@ body {
 .entry.diary .ink {
   color: var(--ink-diary);
   word-spacing: 0.06em;
-  text-shadow:
-    0 0 1px rgba(58, 13, 13, 0.55),
-    0 0 5px rgba(58, 13, 13, 0.2),
-    0 1px 0 rgba(20, 4, 4, 0.18);
+  text-shadow: 0 0 1px rgba(58, 13, 13, 0.5);   /* one soft shadow: cheap to paint (issue #45) */
 }
 
 /* Each character of the reply. Inline (not inline-block) so words still wrap
@@ -698,17 +719,9 @@ body {
   filter: drop-shadow(0 0 0.6px rgba(58, 13, 13, 0.5));
 }
 
-@keyframes inkIn {
-  from {
-    opacity: 0;
-    filter: blur(2px);
-    top: 4px;
-  }
-  to {
-    opacity: 1;
-    filter: blur(0);
-    top: 0;
-  }
+@keyframes inkIn {   /* opacity only: compositor-friendly (issue #45) */
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 /* -------------------------------------------------------------------------
@@ -760,7 +773,7 @@ body {
 }
 /* A clear, solid underline shows where the pen is (issue #41) */
 #entry-input:focus-visible,
-#flow #entry-input:focus-visible {
+#flow-view #entry-input:focus-visible {
   outline: none;
   box-shadow: inset 0 -2px 0 var(--ink-user);
 }
@@ -996,14 +1009,26 @@ body {
   flex: none;
 }
 
-#flow #entry-form {
-  margin: 0;
-  padding: 0;
+/* The writing box lives outside the column flow (issue #45): typing in a box
+   inside CSS columns re-lays out every column on each keystroke. #entry-slot
+   holds its place in the flow; js/app.js layout() lays the form over the slot. */
+#entry-slot {
+  height: var(--slot-h, calc(var(--line) * 2));
   break-inside: avoid;
 }
 
-#flow #entry-input {
-  field-sizing: content;
+#flow-view #entry-form {
+  position: absolute;
+  z-index: 3;
+  margin: 0;
+  padding: 0;
+  contain: layout style;
+}
+#flow-view #entry-form.offpage { visibility: hidden; }
+
+#flow-view #entry-input {
+  field-sizing: fixed;
+  height: calc(var(--line) * 2);
   min-height: calc(var(--line) * 2);
   max-height: calc(var(--line) * 4);
   line-height: var(--line);

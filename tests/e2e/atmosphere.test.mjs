@@ -21,13 +21,14 @@ async function openWithAtmosphere(page) {
   await page.addStyleTag({ url: new URL('css/atmosphere.css', server.url).href });
 }
 
-// Samples --candle-intensity every 100 ms for `ms`, returning the distinct values seen.
+// Samples the glow layer's animated opacity (the flicker, issue #44: a CSS animation
+// on opacity/transform) every 100 ms for `ms`, returning the distinct values seen.
 function sampleIntensity(page, ms = 1500) {
   return page.evaluate((duration) => new Promise((resolve) => {
     const seen = [];
     const read = () => {
-      const el = document.getElementById('candle');
-      seen.push(el ? getComputedStyle(el).getPropertyValue('--candle-intensity').trim() : '');
+      const el = document.querySelector('#candle .candle-glow');
+      seen.push(el ? Number(getComputedStyle(el).opacity).toFixed(3) : '');
     };
     read();
     const id = setInterval(read, 100);
@@ -50,11 +51,17 @@ test('startCandle creates one #candle, which flickers, never blocks clicks, paus
   });
   assert.equal(count, 1);
 
+  // the candle sleeps while the book is closed (issue #44); open it
+  const closedSample = await sampleIntensity(page, 600);
+  assert.equal(closedSample.length, 1, 'no flicker while the book is closed');
+  await page.click('#cover');
+  await page.waitForSelector('#book.open');
+
   const flicker = await sampleIntensity(page, 1500);
   assert.ok(flicker.length > 1, `intensity should change, saw ${JSON.stringify(flicker)}`);
   for (const v of flicker) {
     const n = Number(v);
-    assert.ok(n >= 0.85 && n <= 1, `intensity ${v} is within 0.85–1.0`);
+    assert.ok(n >= 0.79 && n <= 1, `glow opacity ${v} is within 0.8–1.0`);
   }
 
   const hit = await page.evaluate(() => {
@@ -68,8 +75,8 @@ test('startCandle creates one #candle, which flickers, never blocks clicks, paus
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
     document.dispatchEvent(new Event('visibilitychange'));
   });
-  await page.waitForTimeout(150); // let any in-flight transition settle
-  const frozenAt = await page.evaluate(() => getComputedStyle(document.getElementById('candle')).getPropertyValue('--candle-intensity').trim());
+  await page.waitForTimeout(150);
+  const frozenAt = await page.evaluate(() => Number(getComputedStyle(document.querySelector('#candle .candle-glow')).opacity).toFixed(3));
   const whileHidden = await sampleIntensity(page, 800);
   assert.deepEqual(whileHidden, [frozenAt], 'no change while the page is hidden');
 
@@ -93,7 +100,7 @@ test('startCandle creates one #candle, which flickers, never blocks clicks, paus
   });
   assert.deepEqual(thinking, { on: true, off: false });
 
-  // stopCandle removes the element and its timers.
+  // stopCandle removes the element.
   await page.evaluate(async () => {
     const m = await import('/js/candle.js');
     m.stopCandle();
